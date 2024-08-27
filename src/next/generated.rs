@@ -22,7 +22,7 @@ pub const XDR_FILES_SHA256: [(&str, &str); 12] = [
     ),
     (
         "xdr/next/Stellar-contract-config-setting.x",
-        "393369678663cb0f9471a0b69e2a9cfa3ac93c4415fa40cec166e9a231ecbe0d",
+        "c92782d7c6d6f0ea0b2148cabc66c557f38cb23714257f2131235a88f4282366",
     ),
     (
         "xdr/next/Stellar-contract-env-meta.x",
@@ -46,23 +46,23 @@ pub const XDR_FILES_SHA256: [(&str, &str); 12] = [
     ),
     (
         "xdr/next/Stellar-ledger-entries.x",
-        "77dc7062ae6d0812136333e12e35b2294d7c2896a536be9c811eb0ed2abbbccb",
+        "5dea4f695f01aeb57ad97b97646f3da7dcf5ec35748e5065b19de429fb762cbc",
     ),
     (
         "xdr/next/Stellar-ledger.x",
-        "888152fb940b79a01ac00a5218ca91360cb0f01af7acc030d5805ebfec280203",
+        "79692619a21814327f00560b47742f0074c9d9712051bbdc135d851ffe3fcfed",
     ),
     (
         "xdr/next/Stellar-overlay.x",
-        "de3957c58b96ae07968b3d3aebea84f83603e95322d1fa336360e13e3aba737a",
+        "8c73b7c3ad974e7fc4aa4fdf34f7ad50053406254efbd7406c96657cf41691d3",
     ),
     (
         "xdr/next/Stellar-transaction.x",
-        "0d2b35a331a540b48643925d0869857236eb2487c02d340ea32e365e784ea2b8",
+        "bf6050037be5e1a42371a1cc151be23c8908b35220a8f1d8b0d4d6bd7f3b36ed",
     ),
     (
         "xdr/next/Stellar-types.x",
-        "6e3b13f0d3e360b09fa5e2b0e55d43f4d974a769df66afb34e8aecbb329d3f15",
+        "afe02efc4e6767ed8909c3b4350c4045449b614ce487adcf7e9f816f309bf6f8",
     ),
 ];
 
@@ -956,6 +956,32 @@ impl<T, const MAX: u32> Default for VecM<T, MAX> {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl<T: schemars::JsonSchema, const MAX: u32> schemars::JsonSchema for VecM<T, MAX> {
+    fn schema_name() -> String {
+        format!("VecM<{}, {}>", T::schema_name(), MAX)
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = Vec::<T>::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            if let Some(array) = schema.array.clone() {
+                schema.array = Some(Box::new(schemars::schema::ArrayValidation {
+                    max_items: Some(MAX),
+                    ..*array
+                }));
+            }
+            schema.into()
+        } else {
+            schema
+        }
+    }
+}
+
 impl<T, const MAX: u32> VecM<T, MAX> {
     pub const MAX_LEN: usize = { MAX as usize };
 
@@ -1391,6 +1417,40 @@ impl<const MAX: u32> Deref for BytesM<MAX> {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl<const MAX: u32> schemars::JsonSchema for BytesM<MAX> {
+    fn schema_name() -> String {
+        format!("BytesM<{MAX}>")
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = String::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            schema.extensions.insert(
+                "contentEncoding".to_owned(),
+                serde_json::Value::String("hex".to_string()),
+            );
+            schema.extensions.insert(
+                "contentMediaType".to_owned(),
+                serde_json::Value::String("application/binary".to_string()),
+            );
+            let string = *schema.string.unwrap_or_default().clone();
+            schema.string = Some(Box::new(schemars::schema::StringValidation {
+                max_length: MAX.checked_mul(2).map(Some).unwrap_or_default(),
+                min_length: None,
+                ..string
+            }));
+            schema.into()
+        } else {
+            schema
+        }
+    }
+}
+
 impl<const MAX: u32> Default for BytesM<MAX> {
     fn default() -> Self {
         Self(Vec::default())
@@ -1779,6 +1839,27 @@ impl<const MAX: u32> Default for StringM<MAX> {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl<const MAX: u32> schemars::JsonSchema for StringM<MAX> {
+    fn schema_name() -> String {
+        format!("StringM<{MAX}>")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = String::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            let string = *schema.string.unwrap_or_default().clone();
+            schema.string = Some(Box::new(schemars::schema::StringValidation {
+                max_length: Some(MAX),
+                ..string
+            }));
+            schema.into()
+        } else {
+            schema
+        }
+    }
+}
+
 impl<const MAX: u32> StringM<MAX> {
     pub const MAX_LEN: usize = { MAX as usize };
 
@@ -2094,6 +2175,17 @@ impl<const MAX: u32> WriteXdr for StringM<MAX> {
 pub struct Frame<T>(pub T)
 where
     T: ReadXdr;
+
+#[cfg(feature = "schemars")]
+impl<T: schemars::JsonSchema + ReadXdr> schemars::JsonSchema for Frame<T> {
+    fn schema_name() -> String {
+        format!("Frame<{}>", T::schema_name())
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        T::json_schema(gen)
+    }
+}
 
 impl<T> ReadXdr for Frame<T>
 where
@@ -2758,6 +2850,7 @@ mod test {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct Value(pub BytesM);
 
@@ -2866,6 +2959,7 @@ impl AsRef<[u8]> for Value {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpBallot {
     pub counter: u32,
     pub value: Value,
@@ -2914,6 +3008,7 @@ impl WriteXdr for ScpBallot {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScpStatementType {
     Prepare = 0,
@@ -3030,6 +3125,7 @@ impl WriteXdr for ScpStatementType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpNomination {
     pub quorum_set_hash: Hash,
     pub votes: VecM<Value>,
@@ -3082,6 +3178,7 @@ impl WriteXdr for ScpNomination {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpStatementPrepare {
     pub quorum_set_hash: Hash,
     pub ballot: ScpBallot,
@@ -3142,6 +3239,7 @@ impl WriteXdr for ScpStatementPrepare {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpStatementConfirm {
     pub ballot: ScpBallot,
     pub n_prepared: u32,
@@ -3197,6 +3295,7 @@ impl WriteXdr for ScpStatementConfirm {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpStatementExternalize {
     pub commit: ScpBallot,
     pub n_h: u32,
@@ -3272,6 +3371,7 @@ impl WriteXdr for ScpStatementExternalize {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScpStatementPledges {
     Prepare(ScpStatementPrepare),
@@ -3426,6 +3526,7 @@ impl WriteXdr for ScpStatementPledges {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpStatement {
     pub node_id: NodeId,
     pub slot_index: u64,
@@ -3474,6 +3575,7 @@ impl WriteXdr for ScpStatement {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpEnvelope {
     pub statement: ScpStatement,
     pub signature: Signature,
@@ -3520,6 +3622,7 @@ impl WriteXdr for ScpEnvelope {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpQuorumSet {
     pub threshold: u32,
     pub validators: VecM<NodeId>,
@@ -3568,6 +3671,7 @@ impl WriteXdr for ScpQuorumSet {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigSettingContractExecutionLanesV0 {
     pub ledger_max_tx_count: u32,
 }
@@ -3618,6 +3722,7 @@ impl WriteXdr for ConfigSettingContractExecutionLanesV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigSettingContractComputeV0 {
     pub ledger_max_instructions: i64,
     pub tx_max_instructions: i64,
@@ -3647,6 +3752,54 @@ impl WriteXdr for ConfigSettingContractComputeV0 {
             self.tx_max_instructions.write_xdr(w)?;
             self.fee_rate_per_instructions_increment.write_xdr(w)?;
             self.tx_memory_limit.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ConfigSettingContractParallelComputeV0 is an XDR Struct defines as:
+///
+/// ```text
+/// struct ConfigSettingContractParallelComputeV0
+/// {
+///     // Maximum number of threads that can be used to apply a
+///     // transaction set to close the ledger.
+///     // This doesn't limit or defined the actual number of
+///     // threads used and instead only defines the minimum number
+///     // of physical threads that a tier-1 validator has to support
+///     // in order to not fall out of sync with the network.
+///     uint32 ledgerMaxParallelThreads;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ConfigSettingContractParallelComputeV0 {
+    pub ledger_max_parallel_threads: u32,
+}
+
+impl ReadXdr for ConfigSettingContractParallelComputeV0 {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                ledger_max_parallel_threads: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ConfigSettingContractParallelComputeV0 {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.ledger_max_parallel_threads.write_xdr(w)?;
             Ok(())
         })
     }
@@ -3699,6 +3852,7 @@ impl WriteXdr for ConfigSettingContractComputeV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigSettingContractLedgerCostV0 {
     pub ledger_max_read_ledger_entries: u32,
     pub ledger_max_read_bytes: u32,
@@ -3782,6 +3936,7 @@ impl WriteXdr for ConfigSettingContractLedgerCostV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigSettingContractHistoricalDataV0 {
     pub fee_historical1_kb: i64,
 }
@@ -3826,6 +3981,7 @@ impl WriteXdr for ConfigSettingContractHistoricalDataV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigSettingContractEventsV0 {
     pub tx_max_contract_events_size_bytes: u32,
     pub fee_contract_events1_kb: i64,
@@ -3876,6 +4032,7 @@ impl WriteXdr for ConfigSettingContractEventsV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigSettingContractBandwidthV0 {
     pub ledger_max_txs_size_bytes: u32,
     pub tx_max_size_bytes: u32,
@@ -4021,6 +4178,7 @@ impl WriteXdr for ConfigSettingContractBandwidthV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ContractCostType {
     WasmInsnExec = 0,
@@ -4348,6 +4506,7 @@ impl WriteXdr for ContractCostType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractCostParamEntry {
     pub ext: ExtensionPoint,
     pub const_term: i64,
@@ -4415,6 +4574,7 @@ impl WriteXdr for ContractCostParamEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StateArchivalSettings {
     pub max_entry_ttl: u32,
     pub min_temporary_ttl: u32,
@@ -4484,6 +4644,7 @@ impl WriteXdr for StateArchivalSettings {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EvictionIterator {
     pub bucket_list_level: u32,
     pub is_curr_bucket: bool,
@@ -4537,6 +4698,7 @@ pub const CONTRACT_COST_COUNT_LIMIT: u64 = 1024;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct ContractCostParams(pub VecM<ContractCostParamEntry, 1024>);
 
@@ -4646,7 +4808,8 @@ impl AsRef<[ContractCostParamEntry]> for ContractCostParams {
 ///     CONFIG_SETTING_STATE_ARCHIVAL = 10,
 ///     CONFIG_SETTING_CONTRACT_EXECUTION_LANES = 11,
 ///     CONFIG_SETTING_BUCKETLIST_SIZE_WINDOW = 12,
-///     CONFIG_SETTING_EVICTION_ITERATOR = 13
+///     CONFIG_SETTING_EVICTION_ITERATOR = 13,
+///     CONFIG_SETTING_CONTRACT_PARALLEL_COMPUTE_V0 = 14
 /// };
 /// ```
 ///
@@ -4658,6 +4821,7 @@ impl AsRef<[ContractCostParamEntry]> for ContractCostParams {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ConfigSettingId {
     ContractMaxSizeBytes = 0,
@@ -4674,10 +4838,11 @@ pub enum ConfigSettingId {
     ContractExecutionLanes = 11,
     BucketlistSizeWindow = 12,
     EvictionIterator = 13,
+    ContractParallelComputeV0 = 14,
 }
 
 impl ConfigSettingId {
-    pub const VARIANTS: [ConfigSettingId; 14] = [
+    pub const VARIANTS: [ConfigSettingId; 15] = [
         ConfigSettingId::ContractMaxSizeBytes,
         ConfigSettingId::ContractComputeV0,
         ConfigSettingId::ContractLedgerCostV0,
@@ -4692,8 +4857,9 @@ impl ConfigSettingId {
         ConfigSettingId::ContractExecutionLanes,
         ConfigSettingId::BucketlistSizeWindow,
         ConfigSettingId::EvictionIterator,
+        ConfigSettingId::ContractParallelComputeV0,
     ];
-    pub const VARIANTS_STR: [&'static str; 14] = [
+    pub const VARIANTS_STR: [&'static str; 15] = [
         "ContractMaxSizeBytes",
         "ContractComputeV0",
         "ContractLedgerCostV0",
@@ -4708,6 +4874,7 @@ impl ConfigSettingId {
         "ContractExecutionLanes",
         "BucketlistSizeWindow",
         "EvictionIterator",
+        "ContractParallelComputeV0",
     ];
 
     #[must_use]
@@ -4727,11 +4894,12 @@ impl ConfigSettingId {
             Self::ContractExecutionLanes => "ContractExecutionLanes",
             Self::BucketlistSizeWindow => "BucketlistSizeWindow",
             Self::EvictionIterator => "EvictionIterator",
+            Self::ContractParallelComputeV0 => "ContractParallelComputeV0",
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [ConfigSettingId; 14] {
+    pub const fn variants() -> [ConfigSettingId; 15] {
         Self::VARIANTS
     }
 }
@@ -4776,6 +4944,7 @@ impl TryFrom<i32> for ConfigSettingId {
             11 => ConfigSettingId::ContractExecutionLanes,
             12 => ConfigSettingId::BucketlistSizeWindow,
             13 => ConfigSettingId::EvictionIterator,
+            14 => ConfigSettingId::ContractParallelComputeV0,
             #[allow(unreachable_patterns)]
             _ => return Err(Error::Invalid),
         };
@@ -4844,6 +5013,8 @@ impl WriteXdr for ConfigSettingId {
 ///     uint64 bucketListSizeWindow<>;
 /// case CONFIG_SETTING_EVICTION_ITERATOR:
 ///     EvictionIterator evictionIterator;
+/// case CONFIG_SETTING_CONTRACT_PARALLEL_COMPUTE_V0:
+///     ConfigSettingContractParallelComputeV0 contractParallelCompute;
 /// };
 /// ```
 ///
@@ -4855,6 +5026,7 @@ impl WriteXdr for ConfigSettingId {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ConfigSettingEntry {
     ContractMaxSizeBytes(u32),
@@ -4871,10 +5043,11 @@ pub enum ConfigSettingEntry {
     ContractExecutionLanes(ConfigSettingContractExecutionLanesV0),
     BucketlistSizeWindow(VecM<u64>),
     EvictionIterator(EvictionIterator),
+    ContractParallelComputeV0(ConfigSettingContractParallelComputeV0),
 }
 
 impl ConfigSettingEntry {
-    pub const VARIANTS: [ConfigSettingId; 14] = [
+    pub const VARIANTS: [ConfigSettingId; 15] = [
         ConfigSettingId::ContractMaxSizeBytes,
         ConfigSettingId::ContractComputeV0,
         ConfigSettingId::ContractLedgerCostV0,
@@ -4889,8 +5062,9 @@ impl ConfigSettingEntry {
         ConfigSettingId::ContractExecutionLanes,
         ConfigSettingId::BucketlistSizeWindow,
         ConfigSettingId::EvictionIterator,
+        ConfigSettingId::ContractParallelComputeV0,
     ];
-    pub const VARIANTS_STR: [&'static str; 14] = [
+    pub const VARIANTS_STR: [&'static str; 15] = [
         "ContractMaxSizeBytes",
         "ContractComputeV0",
         "ContractLedgerCostV0",
@@ -4905,6 +5079,7 @@ impl ConfigSettingEntry {
         "ContractExecutionLanes",
         "BucketlistSizeWindow",
         "EvictionIterator",
+        "ContractParallelComputeV0",
     ];
 
     #[must_use]
@@ -4924,6 +5099,7 @@ impl ConfigSettingEntry {
             Self::ContractExecutionLanes(_) => "ContractExecutionLanes",
             Self::BucketlistSizeWindow(_) => "BucketlistSizeWindow",
             Self::EvictionIterator(_) => "EvictionIterator",
+            Self::ContractParallelComputeV0(_) => "ContractParallelComputeV0",
         }
     }
 
@@ -4949,11 +5125,12 @@ impl ConfigSettingEntry {
             Self::ContractExecutionLanes(_) => ConfigSettingId::ContractExecutionLanes,
             Self::BucketlistSizeWindow(_) => ConfigSettingId::BucketlistSizeWindow,
             Self::EvictionIterator(_) => ConfigSettingId::EvictionIterator,
+            Self::ContractParallelComputeV0(_) => ConfigSettingId::ContractParallelComputeV0,
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [ConfigSettingId; 14] {
+    pub const fn variants() -> [ConfigSettingId; 15] {
         Self::VARIANTS
     }
 }
@@ -5029,6 +5206,9 @@ impl ReadXdr for ConfigSettingEntry {
                 ConfigSettingId::EvictionIterator => {
                     Self::EvictionIterator(EvictionIterator::read_xdr(r)?)
                 }
+                ConfigSettingId::ContractParallelComputeV0 => Self::ContractParallelComputeV0(
+                    ConfigSettingContractParallelComputeV0::read_xdr(r)?,
+                ),
                 #[allow(unreachable_patterns)]
                 _ => return Err(Error::Invalid),
             };
@@ -5058,6 +5238,7 @@ impl WriteXdr for ConfigSettingEntry {
                 Self::ContractExecutionLanes(v) => v.write_xdr(w)?,
                 Self::BucketlistSizeWindow(v) => v.write_xdr(w)?,
                 Self::EvictionIterator(v) => v.write_xdr(w)?,
+                Self::ContractParallelComputeV0(v) => v.write_xdr(w)?,
             };
             Ok(())
         })
@@ -5081,6 +5262,7 @@ impl WriteXdr for ConfigSettingEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScEnvMetaKind {
     ScEnvMetaKindInterfaceVersion = 0,
@@ -5183,6 +5365,7 @@ impl WriteXdr for ScEnvMetaKind {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScEnvMetaEntry {
     ScEnvMetaKindInterfaceVersion(u64),
@@ -5284,6 +5467,7 @@ impl WriteXdr for ScEnvMetaEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScMetaV0 {
     pub key: StringM,
     pub val: StringM,
@@ -5329,6 +5513,7 @@ impl WriteXdr for ScMetaV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScMetaKind {
     ScMetaV0 = 0,
@@ -5431,6 +5616,7 @@ impl WriteXdr for ScMetaKind {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScMetaEntry {
     ScMetaV0(ScMetaV0),
@@ -5568,6 +5754,7 @@ pub const SC_SPEC_DOC_LIMIT: u64 = 1024;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScSpecType {
     Val = 0,
@@ -5792,6 +5979,7 @@ impl WriteXdr for ScSpecType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeOption {
     pub value_type: Box<ScSpecTypeDef>,
 }
@@ -5834,6 +6022,7 @@ impl WriteXdr for ScSpecTypeOption {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeResult {
     pub ok_type: Box<ScSpecTypeDef>,
     pub error_type: Box<ScSpecTypeDef>,
@@ -5878,6 +6067,7 @@ impl WriteXdr for ScSpecTypeResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeVec {
     pub element_type: Box<ScSpecTypeDef>,
 }
@@ -5920,6 +6110,7 @@ impl WriteXdr for ScSpecTypeVec {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeMap {
     pub key_type: Box<ScSpecTypeDef>,
     pub value_type: Box<ScSpecTypeDef>,
@@ -5964,6 +6155,7 @@ impl WriteXdr for ScSpecTypeMap {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeTuple {
     pub value_types: VecM<ScSpecTypeDef, 12>,
 }
@@ -6005,6 +6197,7 @@ impl WriteXdr for ScSpecTypeTuple {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeBytesN {
     pub n: u32,
 }
@@ -6046,6 +6239,7 @@ impl WriteXdr for ScSpecTypeBytesN {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecTypeUdt {
     pub name: StringM<60>,
 }
@@ -6120,6 +6314,7 @@ impl WriteXdr for ScSpecTypeUdt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScSpecTypeDef {
     Val,
@@ -6392,6 +6587,7 @@ impl WriteXdr for ScSpecTypeDef {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtStructFieldV0 {
     pub doc: StringM<1024>,
     pub name: StringM<30>,
@@ -6442,6 +6638,7 @@ impl WriteXdr for ScSpecUdtStructFieldV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtStructV0 {
     pub doc: StringM<1024>,
     pub lib: StringM<80>,
@@ -6493,6 +6690,7 @@ impl WriteXdr for ScSpecUdtStructV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtUnionCaseVoidV0 {
     pub doc: StringM<1024>,
     pub name: StringM<60>,
@@ -6539,6 +6737,7 @@ impl WriteXdr for ScSpecUdtUnionCaseVoidV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtUnionCaseTupleV0 {
     pub doc: StringM<1024>,
     pub name: StringM<60>,
@@ -6588,6 +6787,7 @@ impl WriteXdr for ScSpecUdtUnionCaseTupleV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScSpecUdtUnionCaseV0Kind {
     VoidV0 = 0,
@@ -6698,6 +6898,7 @@ impl WriteXdr for ScSpecUdtUnionCaseV0Kind {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScSpecUdtUnionCaseV0 {
     VoidV0(ScSpecUdtUnionCaseVoidV0),
@@ -6811,6 +7012,7 @@ impl WriteXdr for ScSpecUdtUnionCaseV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtUnionV0 {
     pub doc: StringM<1024>,
     pub lib: StringM<80>,
@@ -6863,6 +7065,7 @@ impl WriteXdr for ScSpecUdtUnionV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtEnumCaseV0 {
     pub doc: StringM<1024>,
     pub name: StringM<60>,
@@ -6913,6 +7116,7 @@ impl WriteXdr for ScSpecUdtEnumCaseV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtEnumV0 {
     pub doc: StringM<1024>,
     pub lib: StringM<80>,
@@ -6965,6 +7169,7 @@ impl WriteXdr for ScSpecUdtEnumV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtErrorEnumCaseV0 {
     pub doc: StringM<1024>,
     pub name: StringM<60>,
@@ -7015,6 +7220,7 @@ impl WriteXdr for ScSpecUdtErrorEnumCaseV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecUdtErrorEnumV0 {
     pub doc: StringM<1024>,
     pub lib: StringM<80>,
@@ -7067,6 +7273,7 @@ impl WriteXdr for ScSpecUdtErrorEnumV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecFunctionInputV0 {
     pub doc: StringM<1024>,
     pub name: StringM<30>,
@@ -7117,6 +7324,7 @@ impl WriteXdr for ScSpecFunctionInputV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScSpecFunctionV0 {
     pub doc: StringM<1024>,
     pub name: ScSymbol,
@@ -7172,6 +7380,7 @@ impl WriteXdr for ScSpecFunctionV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScSpecEntryKind {
     FunctionV0 = 0,
@@ -7306,6 +7515,7 @@ impl WriteXdr for ScSpecEntryKind {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScSpecEntry {
     FunctionV0(ScSpecFunctionV0),
@@ -7489,6 +7699,7 @@ impl WriteXdr for ScSpecEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScValType {
     Bool = 0,
@@ -7708,6 +7919,7 @@ impl WriteXdr for ScValType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScErrorType {
     Contract = 0,
@@ -7859,6 +8071,7 @@ impl WriteXdr for ScErrorType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScErrorCode {
     ArithDomain = 0,
@@ -8020,6 +8233,7 @@ impl WriteXdr for ScErrorCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScError {
     Contract(u32),
@@ -8177,6 +8391,7 @@ impl WriteXdr for ScError {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct UInt128Parts {
     pub hi: u64,
     pub lo: u64,
@@ -8221,6 +8436,7 @@ impl WriteXdr for UInt128Parts {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Int128Parts {
     pub hi: i64,
     pub lo: u64,
@@ -8267,6 +8483,7 @@ impl WriteXdr for Int128Parts {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct UInt256Parts {
     pub hi_hi: u64,
     pub hi_lo: u64,
@@ -8319,6 +8536,7 @@ impl WriteXdr for UInt256Parts {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Int256Parts {
     pub hi_hi: i64,
     pub hi_lo: u64,
@@ -8371,6 +8589,7 @@ impl WriteXdr for Int256Parts {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ContractExecutableType {
     Wasm = 0,
@@ -8481,6 +8700,7 @@ impl WriteXdr for ContractExecutableType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ContractExecutable {
     Wasm(Hash),
@@ -8589,6 +8809,7 @@ impl WriteXdr for ContractExecutable {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ScAddressType {
     Account = 0,
@@ -8804,6 +9025,7 @@ pub const SCSYMBOL_LIMIT: u64 = 32;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct ScVec(pub VecM<ScVal>);
 
@@ -8909,6 +9131,7 @@ impl AsRef<[ScVal]> for ScVec {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct ScMap(pub VecM<ScMapEntry>);
 
@@ -9014,6 +9237,7 @@ impl AsRef<[ScMapEntry]> for ScMap {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct ScBytes(pub BytesM);
 
@@ -9119,6 +9343,7 @@ impl AsRef<[u8]> for ScBytes {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct ScString(pub StringM);
 
@@ -9224,6 +9449,7 @@ impl AsRef<[u8]> for ScString {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct ScSymbol(pub StringM<32>);
 
@@ -9330,6 +9556,7 @@ impl AsRef<[u8]> for ScSymbol {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScNonceKey {
     pub nonce: i64,
 }
@@ -9371,6 +9598,7 @@ impl WriteXdr for ScNonceKey {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScContractInstance {
     pub executable: ContractExecutable,
     pub storage: Option<ScMap>,
@@ -9473,6 +9701,7 @@ impl WriteXdr for ScContractInstance {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScVal {
     Bool(bool),
@@ -9725,6 +9954,7 @@ impl WriteXdr for ScVal {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScMapEntry {
     pub key: ScVal,
     pub val: ScVal,
@@ -9773,6 +10003,7 @@ impl WriteXdr for ScMapEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum StoredTransactionSet {
     V0(TransactionSet),
@@ -9878,6 +10109,7 @@ impl WriteXdr for StoredTransactionSet {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StoredDebugTransactionSet {
     pub tx_set: StoredTransactionSet,
     pub ledger_seq: u32,
@@ -9927,6 +10159,7 @@ impl WriteXdr for StoredDebugTransactionSet {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PersistedScpStateV0 {
     pub scp_envelopes: VecM<ScpEnvelope>,
     pub quorum_sets: VecM<ScpQuorumSet>,
@@ -9976,6 +10209,7 @@ impl WriteXdr for PersistedScpStateV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PersistedScpStateV1 {
     pub scp_envelopes: VecM<ScpEnvelope>,
     pub quorum_sets: VecM<ScpQuorumSet>,
@@ -10024,6 +10258,7 @@ impl WriteXdr for PersistedScpStateV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum PersistedScpState {
     V0(PersistedScpStateV0),
@@ -10153,6 +10388,39 @@ impl core::str::FromStr for Thresholds {
         hex::decode(s).map_err(|_| Error::InvalidHex)?.try_into()
     }
 }
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Thresholds {
+    fn schema_name() -> String {
+        "Thresholds".to_string()
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = String::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            schema.extensions.insert(
+                "contentEncoding".to_owned(),
+                serde_json::Value::String("hex".to_string()),
+            );
+            schema.extensions.insert(
+                "contentMediaType".to_owned(),
+                serde_json::Value::String("application/binary".to_string()),
+            );
+            let string = *schema.string.unwrap_or_default().clone();
+            schema.string = Some(Box::new(schemars::schema::StringValidation {
+                max_length: 4_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                min_length: 4_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                ..string
+            }));
+            schema.into()
+        } else {
+            schema
+        }
+    }
+}
 impl From<Thresholds> for [u8; 4] {
     #[must_use]
     fn from(x: Thresholds) -> Self {
@@ -10243,6 +10511,7 @@ impl AsRef<[u8]> for Thresholds {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct String32(pub StringM<32>);
 
@@ -10348,6 +10617,7 @@ impl AsRef<[u8]> for String32 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct String64(pub StringM<64>);
 
@@ -10452,6 +10722,7 @@ impl AsRef<[u8]> for String64 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct SequenceNumber(pub i64);
 
@@ -10508,6 +10779,7 @@ impl WriteXdr for SequenceNumber {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct DataValue(pub BytesM<64>);
 
@@ -10612,6 +10884,7 @@ impl AsRef<[u8]> for DataValue {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct PoolId(pub Hash);
 
@@ -10876,6 +11149,7 @@ impl AsRef<[u8]> for AssetCode12 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum AssetType {
     Native = 0,
@@ -11101,6 +11375,7 @@ impl WriteXdr for AssetCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AlphaNum4 {
     pub asset_code: AssetCode4,
     pub issuer: AccountId,
@@ -11146,6 +11421,7 @@ impl WriteXdr for AlphaNum4 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AlphaNum12 {
     pub asset_code: AssetCode12,
     pub issuer: AccountId,
@@ -11200,6 +11476,7 @@ impl WriteXdr for AlphaNum12 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum Asset {
     Native,
@@ -11313,6 +11590,7 @@ impl WriteXdr for Asset {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Price {
     pub n: i32,
     pub d: i32,
@@ -11358,6 +11636,7 @@ impl WriteXdr for Price {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Liabilities {
     pub buying: i64,
     pub selling: i64,
@@ -11406,6 +11685,7 @@ impl WriteXdr for Liabilities {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ThresholdIndexes {
     MasterWeight = 0,
@@ -11530,6 +11810,7 @@ impl WriteXdr for ThresholdIndexes {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LedgerEntryType {
     Account = 0,
@@ -11680,6 +11961,7 @@ impl WriteXdr for LedgerEntryType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Signer {
     pub key: SignerKey,
     pub weight: u32,
@@ -11738,6 +12020,7 @@ impl WriteXdr for Signer {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum AccountFlags {
     RequiredFlag = 1,
@@ -11878,6 +12161,7 @@ pub const MAX_SIGNERS: u64 = 20;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct SponsorshipDescriptor(pub Option<AccountId>);
 
@@ -11944,6 +12228,7 @@ impl WriteXdr for SponsorshipDescriptor {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccountEntryExtensionV3 {
     pub ext: ExtensionPoint,
     pub seq_ledger: u32,
@@ -11995,6 +12280,7 @@ impl WriteXdr for AccountEntryExtensionV3 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum AccountEntryExtensionV2Ext {
     V0,
@@ -12109,6 +12395,7 @@ impl WriteXdr for AccountEntryExtensionV2Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccountEntryExtensionV2 {
     pub num_sponsored: u32,
     pub num_sponsoring: u32,
@@ -12163,6 +12450,7 @@ impl WriteXdr for AccountEntryExtensionV2 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum AccountEntryExtensionV1Ext {
     V0,
@@ -12275,6 +12563,7 @@ impl WriteXdr for AccountEntryExtensionV1Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccountEntryExtensionV1 {
     pub liabilities: Liabilities,
     pub ext: AccountEntryExtensionV1Ext,
@@ -12323,6 +12612,7 @@ impl WriteXdr for AccountEntryExtensionV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum AccountEntryExt {
     V0,
@@ -12450,6 +12740,7 @@ impl WriteXdr for AccountEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccountEntry {
     pub account_id: AccountId,
     pub balance: i64,
@@ -12526,6 +12817,7 @@ impl WriteXdr for AccountEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum TrustLineFlags {
     AuthorizedFlag = 1,
@@ -12665,6 +12957,7 @@ pub const MASK_TRUSTLINE_FLAGS_V17: u64 = 7;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LiquidityPoolType {
     LiquidityPoolConstantProduct = 0,
@@ -12778,6 +13071,7 @@ impl WriteXdr for LiquidityPoolType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TrustLineAsset {
     Native,
@@ -12899,6 +13193,7 @@ impl WriteXdr for TrustLineAsset {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TrustLineEntryExtensionV2Ext {
     V0,
@@ -13004,6 +13299,7 @@ impl WriteXdr for TrustLineEntryExtensionV2Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TrustLineEntryExtensionV2 {
     pub liquidity_pool_use_count: i32,
     pub ext: TrustLineEntryExtensionV2Ext,
@@ -13052,6 +13348,7 @@ impl WriteXdr for TrustLineEntryExtensionV2 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TrustLineEntryV1Ext {
     V0,
@@ -13164,6 +13461,7 @@ impl WriteXdr for TrustLineEntryV1Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TrustLineEntryV1 {
     pub liabilities: Liabilities,
     pub ext: TrustLineEntryV1Ext,
@@ -13224,6 +13522,7 @@ impl WriteXdr for TrustLineEntryV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TrustLineEntryExt {
     V0,
@@ -13355,6 +13654,7 @@ impl WriteXdr for TrustLineEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TrustLineEntry {
     pub account_id: AccountId,
     pub asset: TrustLineAsset,
@@ -13414,6 +13714,7 @@ impl WriteXdr for TrustLineEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum OfferEntryFlags {
     PassiveFlag = 1,
@@ -13524,6 +13825,7 @@ pub const MASK_OFFERENTRY_FLAGS: u64 = 1;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum OfferEntryExt {
     V0,
@@ -13642,6 +13944,7 @@ impl WriteXdr for OfferEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct OfferEntry {
     pub seller_id: AccountId,
     pub offer_id: i64,
@@ -13706,6 +14009,7 @@ impl WriteXdr for OfferEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum DataEntryExt {
     V0,
@@ -13814,6 +14118,7 @@ impl WriteXdr for DataEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DataEntry {
     pub account_id: AccountId,
     pub data_name: String64,
@@ -13870,6 +14175,7 @@ impl WriteXdr for DataEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClaimPredicateType {
     Unconditional = 0,
@@ -14012,6 +14318,7 @@ impl WriteXdr for ClaimPredicateType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClaimPredicate {
     Unconditional,
@@ -14154,6 +14461,7 @@ impl WriteXdr for ClaimPredicate {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClaimantType {
     ClaimantTypeV0 = 0,
@@ -14255,6 +14563,7 @@ impl WriteXdr for ClaimantType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimantV0 {
     pub destination: AccountId,
     pub predicate: ClaimPredicate,
@@ -14305,6 +14614,7 @@ impl WriteXdr for ClaimantV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum Claimant {
     ClaimantTypeV0(ClaimantV0),
@@ -14404,6 +14714,7 @@ impl WriteXdr for Claimant {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClaimableBalanceIdType {
     ClaimableBalanceIdTypeV0 = 0,
@@ -14504,8 +14815,7 @@ impl WriteXdr for ClaimableBalanceIdType {
 #[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 #[cfg_attr(
     all(feature = "serde", feature = "alloc"),
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "snake_case")
+    derive(serde_with::SerializeDisplay, serde_with::DeserializeFromStr)
 )]
 #[allow(clippy::large_enum_variant)]
 pub enum ClaimableBalanceId {
@@ -14611,6 +14921,7 @@ impl WriteXdr for ClaimableBalanceId {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClaimableBalanceFlags {
     ClaimableBalanceClawbackEnabledFlag = 1,
@@ -14722,6 +15033,7 @@ pub const MASK_CLAIMABLE_BALANCE_FLAGS: u64 = 0x1;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClaimableBalanceEntryExtensionV1Ext {
     V0,
@@ -14827,6 +15139,7 @@ impl WriteXdr for ClaimableBalanceEntryExtensionV1Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimableBalanceEntryExtensionV1 {
     pub ext: ClaimableBalanceEntryExtensionV1Ext,
     pub flags: u32,
@@ -14875,6 +15188,7 @@ impl WriteXdr for ClaimableBalanceEntryExtensionV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClaimableBalanceEntryExt {
     V0,
@@ -14998,6 +15312,7 @@ impl WriteXdr for ClaimableBalanceEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimableBalanceEntry {
     pub balance_id: ClaimableBalanceId,
     pub claimants: VecM<Claimant, 10>,
@@ -15053,6 +15368,7 @@ impl WriteXdr for ClaimableBalanceEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LiquidityPoolConstantProductParameters {
     pub asset_a: Asset,
     pub asset_b: Asset,
@@ -15106,6 +15422,7 @@ impl WriteXdr for LiquidityPoolConstantProductParameters {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LiquidityPoolEntryConstantProduct {
     pub params: LiquidityPoolConstantProductParameters,
     pub reserve_a: i64,
@@ -15170,6 +15487,7 @@ impl WriteXdr for LiquidityPoolEntryConstantProduct {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LiquidityPoolEntryBody {
     LiquidityPoolConstantProduct(LiquidityPoolEntryConstantProduct),
@@ -15290,6 +15608,7 @@ impl WriteXdr for LiquidityPoolEntryBody {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LiquidityPoolEntry {
     pub liquidity_pool_id: PoolId,
     pub body: LiquidityPoolEntryBody,
@@ -15335,6 +15654,7 @@ impl WriteXdr for LiquidityPoolEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ContractDataDurability {
     Temporary = 0,
@@ -15445,6 +15765,7 @@ impl WriteXdr for ContractDataDurability {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractDataEntry {
     pub ext: ExtensionPoint,
     pub contract: ScAddress,
@@ -15507,6 +15828,7 @@ impl WriteXdr for ContractDataEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractCodeCostInputs {
     pub ext: ExtensionPoint,
     pub n_instructions: u32,
@@ -15579,6 +15901,7 @@ impl WriteXdr for ContractCodeCostInputs {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractCodeEntryV1 {
     pub ext: ExtensionPoint,
     pub cost_inputs: ContractCodeCostInputs,
@@ -15631,6 +15954,7 @@ impl WriteXdr for ContractCodeEntryV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ContractCodeEntryExt {
     V0,
@@ -15746,6 +16070,7 @@ impl WriteXdr for ContractCodeEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractCodeEntry {
     pub ext: ContractCodeEntryExt,
     pub hash: Hash,
@@ -15794,6 +16119,7 @@ impl WriteXdr for ContractCodeEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TtlEntry {
     pub key_hash: Hash,
     pub live_until_ledger_seq: u32,
@@ -15840,6 +16166,7 @@ impl WriteXdr for TtlEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerEntryExtensionV1Ext {
     V0,
@@ -15945,6 +16272,7 @@ impl WriteXdr for LedgerEntryExtensionV1Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerEntryExtensionV1 {
     pub sponsoring_id: SponsorshipDescriptor,
     pub ext: LedgerEntryExtensionV1Ext,
@@ -16009,6 +16337,7 @@ impl WriteXdr for LedgerEntryExtensionV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerEntryData {
     Account(AccountEntry),
@@ -16188,6 +16517,7 @@ impl WriteXdr for LedgerEntryData {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerEntryExt {
     V0,
@@ -16326,6 +16656,7 @@ impl WriteXdr for LedgerEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerEntry {
     pub last_modified_ledger_seq: u32,
     pub data: LedgerEntryData,
@@ -16373,6 +16704,7 @@ impl WriteXdr for LedgerEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyAccount {
     pub account_id: AccountId,
 }
@@ -16415,6 +16747,7 @@ impl WriteXdr for LedgerKeyAccount {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyTrustLine {
     pub account_id: AccountId,
     pub asset: TrustLineAsset,
@@ -16460,6 +16793,7 @@ impl WriteXdr for LedgerKeyTrustLine {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyOffer {
     pub seller_id: AccountId,
     pub offer_id: i64,
@@ -16505,6 +16839,7 @@ impl WriteXdr for LedgerKeyOffer {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyData {
     pub account_id: AccountId,
     pub data_name: String64,
@@ -16549,6 +16884,7 @@ impl WriteXdr for LedgerKeyData {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyClaimableBalance {
     pub balance_id: ClaimableBalanceId,
 }
@@ -16590,6 +16926,7 @@ impl WriteXdr for LedgerKeyClaimableBalance {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyLiquidityPool {
     pub liquidity_pool_id: PoolId,
 }
@@ -16633,6 +16970,7 @@ impl WriteXdr for LedgerKeyLiquidityPool {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyContractData {
     pub contract: ScAddress,
     pub key: ScVal,
@@ -16680,6 +17018,7 @@ impl WriteXdr for LedgerKeyContractData {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyContractCode {
     pub hash: Hash,
 }
@@ -16721,6 +17060,7 @@ impl WriteXdr for LedgerKeyContractCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyConfigSetting {
     pub config_setting_id: ConfigSettingId,
 }
@@ -16763,6 +17103,7 @@ impl WriteXdr for LedgerKeyConfigSetting {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerKeyTtl {
     pub key_hash: Hash,
 }
@@ -16865,6 +17206,7 @@ impl WriteXdr for LedgerKeyTtl {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerKey {
     Account(LedgerKeyAccount),
@@ -17050,6 +17392,7 @@ impl WriteXdr for LedgerKey {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum EnvelopeType {
     TxV0 = 0,
@@ -17183,6 +17526,1253 @@ impl WriteXdr for EnvelopeType {
     }
 }
 
+/// BucketListType is an XDR Enum defines as:
+///
+/// ```text
+/// enum BucketListType
+/// {
+///     LIVE = 0,
+///     HOT_ARCHIVE = 1,
+///     COLD_ARCHIVE = 2
+/// };
+/// ```
+///
+// enum
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[repr(i32)]
+pub enum BucketListType {
+    Live = 0,
+    HotArchive = 1,
+    ColdArchive = 2,
+}
+
+impl BucketListType {
+    pub const VARIANTS: [BucketListType; 3] = [
+        BucketListType::Live,
+        BucketListType::HotArchive,
+        BucketListType::ColdArchive,
+    ];
+    pub const VARIANTS_STR: [&'static str; 3] = ["Live", "HotArchive", "ColdArchive"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Live => "Live",
+            Self::HotArchive => "HotArchive",
+            Self::ColdArchive => "ColdArchive",
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [BucketListType; 3] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for BucketListType {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Variants<BucketListType> for BucketListType {
+    fn variants() -> slice::Iter<'static, BucketListType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Enum for BucketListType {}
+
+impl fmt::Display for BucketListType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl TryFrom<i32> for BucketListType {
+    type Error = Error;
+
+    fn try_from(i: i32) -> Result<Self> {
+        let e = match i {
+            0 => BucketListType::Live,
+            1 => BucketListType::HotArchive,
+            2 => BucketListType::ColdArchive,
+            #[allow(unreachable_patterns)]
+            _ => return Err(Error::Invalid),
+        };
+        Ok(e)
+    }
+}
+
+impl From<BucketListType> for i32 {
+    #[must_use]
+    fn from(e: BucketListType) -> Self {
+        e as Self
+    }
+}
+
+impl ReadXdr for BucketListType {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let e = i32::read_xdr(r)?;
+            let v: Self = e.try_into()?;
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for BucketListType {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            let i: i32 = (*self).into();
+            i.write_xdr(w)
+        })
+    }
+}
+
+/// BucketEntryType is an XDR Enum defines as:
+///
+/// ```text
+/// enum BucketEntryType
+/// {
+///     METAENTRY =
+///         -1, // At-and-after protocol 11: bucket metadata, should come first.
+///     LIVEENTRY = 0, // Before protocol 11: created-or-updated;
+///                    // At-and-after protocol 11: only updated.
+///     DEADENTRY = 1,
+///     INITENTRY = 2 // At-and-after protocol 11: only created.
+/// };
+/// ```
+///
+// enum
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[repr(i32)]
+pub enum BucketEntryType {
+    Metaentry = -1,
+    Liveentry = 0,
+    Deadentry = 1,
+    Initentry = 2,
+}
+
+impl BucketEntryType {
+    pub const VARIANTS: [BucketEntryType; 4] = [
+        BucketEntryType::Metaentry,
+        BucketEntryType::Liveentry,
+        BucketEntryType::Deadentry,
+        BucketEntryType::Initentry,
+    ];
+    pub const VARIANTS_STR: [&'static str; 4] =
+        ["Metaentry", "Liveentry", "Deadentry", "Initentry"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Metaentry => "Metaentry",
+            Self::Liveentry => "Liveentry",
+            Self::Deadentry => "Deadentry",
+            Self::Initentry => "Initentry",
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [BucketEntryType; 4] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for BucketEntryType {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Variants<BucketEntryType> for BucketEntryType {
+    fn variants() -> slice::Iter<'static, BucketEntryType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Enum for BucketEntryType {}
+
+impl fmt::Display for BucketEntryType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl TryFrom<i32> for BucketEntryType {
+    type Error = Error;
+
+    fn try_from(i: i32) -> Result<Self> {
+        let e = match i {
+            -1 => BucketEntryType::Metaentry,
+            0 => BucketEntryType::Liveentry,
+            1 => BucketEntryType::Deadentry,
+            2 => BucketEntryType::Initentry,
+            #[allow(unreachable_patterns)]
+            _ => return Err(Error::Invalid),
+        };
+        Ok(e)
+    }
+}
+
+impl From<BucketEntryType> for i32 {
+    #[must_use]
+    fn from(e: BucketEntryType) -> Self {
+        e as Self
+    }
+}
+
+impl ReadXdr for BucketEntryType {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let e = i32::read_xdr(r)?;
+            let v: Self = e.try_into()?;
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for BucketEntryType {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            let i: i32 = (*self).into();
+            i.write_xdr(w)
+        })
+    }
+}
+
+/// HotArchiveBucketEntryType is an XDR Enum defines as:
+///
+/// ```text
+/// enum HotArchiveBucketEntryType
+/// {
+///     HOT_ARCHIVE_METAENTRY = -1, // Bucket metadata, should come first.
+///     HOT_ARCHIVE_ARCHIVED = 0,   // Entry is Archived
+///     HOT_ARCHIVE_LIVE = 1,       // Entry was previously HOT_ARCHIVE_ARCHIVED, or HOT_ARCHIVE_DELETED, but
+///                                 // has been added back to the live BucketList.
+///                                 // Does not need to be persisted.
+///     HOT_ARCHIVE_DELETED = 2     // Entry deleted (Note: must be persisted in archive)
+/// };
+/// ```
+///
+// enum
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[repr(i32)]
+pub enum HotArchiveBucketEntryType {
+    Metaentry = -1,
+    Archived = 0,
+    Live = 1,
+    Deleted = 2,
+}
+
+impl HotArchiveBucketEntryType {
+    pub const VARIANTS: [HotArchiveBucketEntryType; 4] = [
+        HotArchiveBucketEntryType::Metaentry,
+        HotArchiveBucketEntryType::Archived,
+        HotArchiveBucketEntryType::Live,
+        HotArchiveBucketEntryType::Deleted,
+    ];
+    pub const VARIANTS_STR: [&'static str; 4] = ["Metaentry", "Archived", "Live", "Deleted"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Metaentry => "Metaentry",
+            Self::Archived => "Archived",
+            Self::Live => "Live",
+            Self::Deleted => "Deleted",
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [HotArchiveBucketEntryType; 4] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for HotArchiveBucketEntryType {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Variants<HotArchiveBucketEntryType> for HotArchiveBucketEntryType {
+    fn variants() -> slice::Iter<'static, HotArchiveBucketEntryType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Enum for HotArchiveBucketEntryType {}
+
+impl fmt::Display for HotArchiveBucketEntryType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl TryFrom<i32> for HotArchiveBucketEntryType {
+    type Error = Error;
+
+    fn try_from(i: i32) -> Result<Self> {
+        let e = match i {
+            -1 => HotArchiveBucketEntryType::Metaentry,
+            0 => HotArchiveBucketEntryType::Archived,
+            1 => HotArchiveBucketEntryType::Live,
+            2 => HotArchiveBucketEntryType::Deleted,
+            #[allow(unreachable_patterns)]
+            _ => return Err(Error::Invalid),
+        };
+        Ok(e)
+    }
+}
+
+impl From<HotArchiveBucketEntryType> for i32 {
+    #[must_use]
+    fn from(e: HotArchiveBucketEntryType) -> Self {
+        e as Self
+    }
+}
+
+impl ReadXdr for HotArchiveBucketEntryType {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let e = i32::read_xdr(r)?;
+            let v: Self = e.try_into()?;
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for HotArchiveBucketEntryType {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            let i: i32 = (*self).into();
+            i.write_xdr(w)
+        })
+    }
+}
+
+/// ColdArchiveBucketEntryType is an XDR Enum defines as:
+///
+/// ```text
+/// enum ColdArchiveBucketEntryType
+/// {
+///     COLD_ARCHIVE_METAENTRY     = -1,  // Bucket metadata, should come first.
+///     COLD_ARCHIVE_ARCHIVED_LEAF = 0,   // Full LedgerEntry that was archived during the epoch
+///     COLD_ARCHIVE_DELETED_LEAF  = 1,   // LedgerKey that was deleted during the epoch
+///     COLD_ARCHIVE_BOUNDARY_LEAF = 2,   // Dummy leaf representing low/high bound
+///     COLD_ARCHIVE_HASH          = 3    // Intermediary Merkle hash entry
+/// };
+/// ```
+///
+// enum
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[repr(i32)]
+pub enum ColdArchiveBucketEntryType {
+    Metaentry = -1,
+    ArchivedLeaf = 0,
+    DeletedLeaf = 1,
+    BoundaryLeaf = 2,
+    Hash = 3,
+}
+
+impl ColdArchiveBucketEntryType {
+    pub const VARIANTS: [ColdArchiveBucketEntryType; 5] = [
+        ColdArchiveBucketEntryType::Metaentry,
+        ColdArchiveBucketEntryType::ArchivedLeaf,
+        ColdArchiveBucketEntryType::DeletedLeaf,
+        ColdArchiveBucketEntryType::BoundaryLeaf,
+        ColdArchiveBucketEntryType::Hash,
+    ];
+    pub const VARIANTS_STR: [&'static str; 5] = [
+        "Metaentry",
+        "ArchivedLeaf",
+        "DeletedLeaf",
+        "BoundaryLeaf",
+        "Hash",
+    ];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Metaentry => "Metaentry",
+            Self::ArchivedLeaf => "ArchivedLeaf",
+            Self::DeletedLeaf => "DeletedLeaf",
+            Self::BoundaryLeaf => "BoundaryLeaf",
+            Self::Hash => "Hash",
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [ColdArchiveBucketEntryType; 5] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for ColdArchiveBucketEntryType {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Variants<ColdArchiveBucketEntryType> for ColdArchiveBucketEntryType {
+    fn variants() -> slice::Iter<'static, ColdArchiveBucketEntryType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Enum for ColdArchiveBucketEntryType {}
+
+impl fmt::Display for ColdArchiveBucketEntryType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl TryFrom<i32> for ColdArchiveBucketEntryType {
+    type Error = Error;
+
+    fn try_from(i: i32) -> Result<Self> {
+        let e = match i {
+            -1 => ColdArchiveBucketEntryType::Metaentry,
+            0 => ColdArchiveBucketEntryType::ArchivedLeaf,
+            1 => ColdArchiveBucketEntryType::DeletedLeaf,
+            2 => ColdArchiveBucketEntryType::BoundaryLeaf,
+            3 => ColdArchiveBucketEntryType::Hash,
+            #[allow(unreachable_patterns)]
+            _ => return Err(Error::Invalid),
+        };
+        Ok(e)
+    }
+}
+
+impl From<ColdArchiveBucketEntryType> for i32 {
+    #[must_use]
+    fn from(e: ColdArchiveBucketEntryType) -> Self {
+        e as Self
+    }
+}
+
+impl ReadXdr for ColdArchiveBucketEntryType {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let e = i32::read_xdr(r)?;
+            let v: Self = e.try_into()?;
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for ColdArchiveBucketEntryType {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            let i: i32 = (*self).into();
+            i.write_xdr(w)
+        })
+    }
+}
+
+/// BucketMetadataExt is an XDR NestedUnion defines as:
+///
+/// ```text
+/// union switch (int v)
+///     {
+///     case 0:
+///         void;
+///     case 1:
+///         BucketListType bucketListType;
+///     }
+/// ```
+///
+// union with discriminant i32
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[allow(clippy::large_enum_variant)]
+pub enum BucketMetadataExt {
+    V0,
+    V1(BucketListType),
+}
+
+impl BucketMetadataExt {
+    pub const VARIANTS: [i32; 2] = [0, 1];
+    pub const VARIANTS_STR: [&'static str; 2] = ["V0", "V1"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::V0 => "V0",
+            Self::V1(_) => "V1",
+        }
+    }
+
+    #[must_use]
+    pub const fn discriminant(&self) -> i32 {
+        #[allow(clippy::match_same_arms)]
+        match self {
+            Self::V0 => 0,
+            Self::V1(_) => 1,
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [i32; 2] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for BucketMetadataExt {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Discriminant<i32> for BucketMetadataExt {
+    #[must_use]
+    fn discriminant(&self) -> i32 {
+        Self::discriminant(self)
+    }
+}
+
+impl Variants<i32> for BucketMetadataExt {
+    fn variants() -> slice::Iter<'static, i32> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Union<i32> for BucketMetadataExt {}
+
+impl ReadXdr for BucketMetadataExt {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let dv: i32 = <i32 as ReadXdr>::read_xdr(r)?;
+            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+            let v = match dv {
+                0 => Self::V0,
+                1 => Self::V1(BucketListType::read_xdr(r)?),
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::Invalid),
+            };
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for BucketMetadataExt {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.discriminant().write_xdr(w)?;
+            #[allow(clippy::match_same_arms)]
+            match self {
+                Self::V0 => ().write_xdr(w)?,
+                Self::V1(v) => v.write_xdr(w)?,
+            };
+            Ok(())
+        })
+    }
+}
+
+/// BucketMetadata is an XDR Struct defines as:
+///
+/// ```text
+/// struct BucketMetadata
+/// {
+///     // Indicates the protocol version used to create / merge this bucket.
+///     uint32 ledgerVersion;
+///
+///     // reserved for future use
+///     union switch (int v)
+///     {
+///     case 0:
+///         void;
+///     case 1:
+///         BucketListType bucketListType;
+///     }
+///     ext;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct BucketMetadata {
+    pub ledger_version: u32,
+    pub ext: BucketMetadataExt,
+}
+
+impl ReadXdr for BucketMetadata {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                ledger_version: u32::read_xdr(r)?,
+                ext: BucketMetadataExt::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for BucketMetadata {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.ledger_version.write_xdr(w)?;
+            self.ext.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// BucketEntry is an XDR Union defines as:
+///
+/// ```text
+/// union BucketEntry switch (BucketEntryType type)
+/// {
+/// case LIVEENTRY:
+/// case INITENTRY:
+///     LedgerEntry liveEntry;
+///
+/// case DEADENTRY:
+///     LedgerKey deadEntry;
+/// case METAENTRY:
+///     BucketMetadata metaEntry;
+/// };
+/// ```
+///
+// union with discriminant BucketEntryType
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[allow(clippy::large_enum_variant)]
+pub enum BucketEntry {
+    Liveentry(LedgerEntry),
+    Initentry(LedgerEntry),
+    Deadentry(LedgerKey),
+    Metaentry(BucketMetadata),
+}
+
+impl BucketEntry {
+    pub const VARIANTS: [BucketEntryType; 4] = [
+        BucketEntryType::Liveentry,
+        BucketEntryType::Initentry,
+        BucketEntryType::Deadentry,
+        BucketEntryType::Metaentry,
+    ];
+    pub const VARIANTS_STR: [&'static str; 4] =
+        ["Liveentry", "Initentry", "Deadentry", "Metaentry"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Liveentry(_) => "Liveentry",
+            Self::Initentry(_) => "Initentry",
+            Self::Deadentry(_) => "Deadentry",
+            Self::Metaentry(_) => "Metaentry",
+        }
+    }
+
+    #[must_use]
+    pub const fn discriminant(&self) -> BucketEntryType {
+        #[allow(clippy::match_same_arms)]
+        match self {
+            Self::Liveentry(_) => BucketEntryType::Liveentry,
+            Self::Initentry(_) => BucketEntryType::Initentry,
+            Self::Deadentry(_) => BucketEntryType::Deadentry,
+            Self::Metaentry(_) => BucketEntryType::Metaentry,
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [BucketEntryType; 4] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for BucketEntry {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Discriminant<BucketEntryType> for BucketEntry {
+    #[must_use]
+    fn discriminant(&self) -> BucketEntryType {
+        Self::discriminant(self)
+    }
+}
+
+impl Variants<BucketEntryType> for BucketEntry {
+    fn variants() -> slice::Iter<'static, BucketEntryType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Union<BucketEntryType> for BucketEntry {}
+
+impl ReadXdr for BucketEntry {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let dv: BucketEntryType = <BucketEntryType as ReadXdr>::read_xdr(r)?;
+            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+            let v = match dv {
+                BucketEntryType::Liveentry => Self::Liveentry(LedgerEntry::read_xdr(r)?),
+                BucketEntryType::Initentry => Self::Initentry(LedgerEntry::read_xdr(r)?),
+                BucketEntryType::Deadentry => Self::Deadentry(LedgerKey::read_xdr(r)?),
+                BucketEntryType::Metaentry => Self::Metaentry(BucketMetadata::read_xdr(r)?),
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::Invalid),
+            };
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for BucketEntry {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.discriminant().write_xdr(w)?;
+            #[allow(clippy::match_same_arms)]
+            match self {
+                Self::Liveentry(v) => v.write_xdr(w)?,
+                Self::Initentry(v) => v.write_xdr(w)?,
+                Self::Deadentry(v) => v.write_xdr(w)?,
+                Self::Metaentry(v) => v.write_xdr(w)?,
+            };
+            Ok(())
+        })
+    }
+}
+
+/// HotArchiveBucketEntry is an XDR Union defines as:
+///
+/// ```text
+/// union HotArchiveBucketEntry switch (HotArchiveBucketEntryType type)
+/// {
+/// case HOT_ARCHIVE_ARCHIVED:
+///     LedgerEntry archivedEntry;
+///
+/// case HOT_ARCHIVE_LIVE:
+/// case HOT_ARCHIVE_DELETED:
+///     LedgerKey key;
+/// case HOT_ARCHIVE_METAENTRY:
+///     BucketMetadata metaEntry;
+/// };
+/// ```
+///
+// union with discriminant HotArchiveBucketEntryType
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[allow(clippy::large_enum_variant)]
+pub enum HotArchiveBucketEntry {
+    Archived(LedgerEntry),
+    Live(LedgerKey),
+    Deleted(LedgerKey),
+    Metaentry(BucketMetadata),
+}
+
+impl HotArchiveBucketEntry {
+    pub const VARIANTS: [HotArchiveBucketEntryType; 4] = [
+        HotArchiveBucketEntryType::Archived,
+        HotArchiveBucketEntryType::Live,
+        HotArchiveBucketEntryType::Deleted,
+        HotArchiveBucketEntryType::Metaentry,
+    ];
+    pub const VARIANTS_STR: [&'static str; 4] = ["Archived", "Live", "Deleted", "Metaentry"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Archived(_) => "Archived",
+            Self::Live(_) => "Live",
+            Self::Deleted(_) => "Deleted",
+            Self::Metaentry(_) => "Metaentry",
+        }
+    }
+
+    #[must_use]
+    pub const fn discriminant(&self) -> HotArchiveBucketEntryType {
+        #[allow(clippy::match_same_arms)]
+        match self {
+            Self::Archived(_) => HotArchiveBucketEntryType::Archived,
+            Self::Live(_) => HotArchiveBucketEntryType::Live,
+            Self::Deleted(_) => HotArchiveBucketEntryType::Deleted,
+            Self::Metaentry(_) => HotArchiveBucketEntryType::Metaentry,
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [HotArchiveBucketEntryType; 4] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for HotArchiveBucketEntry {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Discriminant<HotArchiveBucketEntryType> for HotArchiveBucketEntry {
+    #[must_use]
+    fn discriminant(&self) -> HotArchiveBucketEntryType {
+        Self::discriminant(self)
+    }
+}
+
+impl Variants<HotArchiveBucketEntryType> for HotArchiveBucketEntry {
+    fn variants() -> slice::Iter<'static, HotArchiveBucketEntryType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Union<HotArchiveBucketEntryType> for HotArchiveBucketEntry {}
+
+impl ReadXdr for HotArchiveBucketEntry {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let dv: HotArchiveBucketEntryType =
+                <HotArchiveBucketEntryType as ReadXdr>::read_xdr(r)?;
+            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+            let v = match dv {
+                HotArchiveBucketEntryType::Archived => Self::Archived(LedgerEntry::read_xdr(r)?),
+                HotArchiveBucketEntryType::Live => Self::Live(LedgerKey::read_xdr(r)?),
+                HotArchiveBucketEntryType::Deleted => Self::Deleted(LedgerKey::read_xdr(r)?),
+                HotArchiveBucketEntryType::Metaentry => {
+                    Self::Metaentry(BucketMetadata::read_xdr(r)?)
+                }
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::Invalid),
+            };
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for HotArchiveBucketEntry {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.discriminant().write_xdr(w)?;
+            #[allow(clippy::match_same_arms)]
+            match self {
+                Self::Archived(v) => v.write_xdr(w)?,
+                Self::Live(v) => v.write_xdr(w)?,
+                Self::Deleted(v) => v.write_xdr(w)?,
+                Self::Metaentry(v) => v.write_xdr(w)?,
+            };
+            Ok(())
+        })
+    }
+}
+
+/// ColdArchiveArchivedLeaf is an XDR Struct defines as:
+///
+/// ```text
+/// struct ColdArchiveArchivedLeaf
+/// {
+///     uint32 index;
+///     LedgerEntry archivedEntry;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ColdArchiveArchivedLeaf {
+    pub index: u32,
+    pub archived_entry: LedgerEntry,
+}
+
+impl ReadXdr for ColdArchiveArchivedLeaf {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                index: u32::read_xdr(r)?,
+                archived_entry: LedgerEntry::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ColdArchiveArchivedLeaf {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.index.write_xdr(w)?;
+            self.archived_entry.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ColdArchiveDeletedLeaf is an XDR Struct defines as:
+///
+/// ```text
+/// struct ColdArchiveDeletedLeaf
+/// {
+///     uint32 index;
+///     LedgerKey deletedKey;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ColdArchiveDeletedLeaf {
+    pub index: u32,
+    pub deleted_key: LedgerKey,
+}
+
+impl ReadXdr for ColdArchiveDeletedLeaf {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                index: u32::read_xdr(r)?,
+                deleted_key: LedgerKey::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ColdArchiveDeletedLeaf {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.index.write_xdr(w)?;
+            self.deleted_key.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ColdArchiveBoundaryLeaf is an XDR Struct defines as:
+///
+/// ```text
+/// struct ColdArchiveBoundaryLeaf
+/// {
+///     uint32 index;
+///     bool isLowerBound;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ColdArchiveBoundaryLeaf {
+    pub index: u32,
+    pub is_lower_bound: bool,
+}
+
+impl ReadXdr for ColdArchiveBoundaryLeaf {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                index: u32::read_xdr(r)?,
+                is_lower_bound: bool::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ColdArchiveBoundaryLeaf {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.index.write_xdr(w)?;
+            self.is_lower_bound.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ColdArchiveHashEntry is an XDR Struct defines as:
+///
+/// ```text
+/// struct ColdArchiveHashEntry
+/// {
+///     uint32 index;
+///     uint32 level;
+///     Hash hash;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ColdArchiveHashEntry {
+    pub index: u32,
+    pub level: u32,
+    pub hash: Hash,
+}
+
+impl ReadXdr for ColdArchiveHashEntry {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                index: u32::read_xdr(r)?,
+                level: u32::read_xdr(r)?,
+                hash: Hash::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ColdArchiveHashEntry {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.index.write_xdr(w)?;
+            self.level.write_xdr(w)?;
+            self.hash.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ColdArchiveBucketEntry is an XDR Union defines as:
+///
+/// ```text
+/// union ColdArchiveBucketEntry switch (ColdArchiveBucketEntryType type)
+/// {
+/// case COLD_ARCHIVE_METAENTRY:
+///     BucketMetadata metaEntry;
+/// case COLD_ARCHIVE_ARCHIVED_LEAF:
+///     ColdArchiveArchivedLeaf archivedLeaf;
+/// case COLD_ARCHIVE_DELETED_LEAF:
+///     ColdArchiveDeletedLeaf deletedLeaf;
+/// case COLD_ARCHIVE_BOUNDARY_LEAF:
+///     ColdArchiveBoundaryLeaf boundaryLeaf;
+/// case COLD_ARCHIVE_HASH:
+///     ColdArchiveHashEntry hashEntry;
+/// };
+/// ```
+///
+// union with discriminant ColdArchiveBucketEntryType
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[allow(clippy::large_enum_variant)]
+pub enum ColdArchiveBucketEntry {
+    Metaentry(BucketMetadata),
+    ArchivedLeaf(ColdArchiveArchivedLeaf),
+    DeletedLeaf(ColdArchiveDeletedLeaf),
+    BoundaryLeaf(ColdArchiveBoundaryLeaf),
+    Hash(ColdArchiveHashEntry),
+}
+
+impl ColdArchiveBucketEntry {
+    pub const VARIANTS: [ColdArchiveBucketEntryType; 5] = [
+        ColdArchiveBucketEntryType::Metaentry,
+        ColdArchiveBucketEntryType::ArchivedLeaf,
+        ColdArchiveBucketEntryType::DeletedLeaf,
+        ColdArchiveBucketEntryType::BoundaryLeaf,
+        ColdArchiveBucketEntryType::Hash,
+    ];
+    pub const VARIANTS_STR: [&'static str; 5] = [
+        "Metaentry",
+        "ArchivedLeaf",
+        "DeletedLeaf",
+        "BoundaryLeaf",
+        "Hash",
+    ];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Metaentry(_) => "Metaentry",
+            Self::ArchivedLeaf(_) => "ArchivedLeaf",
+            Self::DeletedLeaf(_) => "DeletedLeaf",
+            Self::BoundaryLeaf(_) => "BoundaryLeaf",
+            Self::Hash(_) => "Hash",
+        }
+    }
+
+    #[must_use]
+    pub const fn discriminant(&self) -> ColdArchiveBucketEntryType {
+        #[allow(clippy::match_same_arms)]
+        match self {
+            Self::Metaentry(_) => ColdArchiveBucketEntryType::Metaentry,
+            Self::ArchivedLeaf(_) => ColdArchiveBucketEntryType::ArchivedLeaf,
+            Self::DeletedLeaf(_) => ColdArchiveBucketEntryType::DeletedLeaf,
+            Self::BoundaryLeaf(_) => ColdArchiveBucketEntryType::BoundaryLeaf,
+            Self::Hash(_) => ColdArchiveBucketEntryType::Hash,
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [ColdArchiveBucketEntryType; 5] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for ColdArchiveBucketEntry {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Discriminant<ColdArchiveBucketEntryType> for ColdArchiveBucketEntry {
+    #[must_use]
+    fn discriminant(&self) -> ColdArchiveBucketEntryType {
+        Self::discriminant(self)
+    }
+}
+
+impl Variants<ColdArchiveBucketEntryType> for ColdArchiveBucketEntry {
+    fn variants() -> slice::Iter<'static, ColdArchiveBucketEntryType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Union<ColdArchiveBucketEntryType> for ColdArchiveBucketEntry {}
+
+impl ReadXdr for ColdArchiveBucketEntry {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let dv: ColdArchiveBucketEntryType =
+                <ColdArchiveBucketEntryType as ReadXdr>::read_xdr(r)?;
+            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+            let v = match dv {
+                ColdArchiveBucketEntryType::Metaentry => {
+                    Self::Metaentry(BucketMetadata::read_xdr(r)?)
+                }
+                ColdArchiveBucketEntryType::ArchivedLeaf => {
+                    Self::ArchivedLeaf(ColdArchiveArchivedLeaf::read_xdr(r)?)
+                }
+                ColdArchiveBucketEntryType::DeletedLeaf => {
+                    Self::DeletedLeaf(ColdArchiveDeletedLeaf::read_xdr(r)?)
+                }
+                ColdArchiveBucketEntryType::BoundaryLeaf => {
+                    Self::BoundaryLeaf(ColdArchiveBoundaryLeaf::read_xdr(r)?)
+                }
+                ColdArchiveBucketEntryType::Hash => Self::Hash(ColdArchiveHashEntry::read_xdr(r)?),
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::Invalid),
+            };
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for ColdArchiveBucketEntry {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.discriminant().write_xdr(w)?;
+            #[allow(clippy::match_same_arms)]
+            match self {
+                Self::Metaentry(v) => v.write_xdr(w)?,
+                Self::ArchivedLeaf(v) => v.write_xdr(w)?,
+                Self::DeletedLeaf(v) => v.write_xdr(w)?,
+                Self::BoundaryLeaf(v) => v.write_xdr(w)?,
+                Self::Hash(v) => v.write_xdr(w)?,
+            };
+            Ok(())
+        })
+    }
+}
+
 /// UpgradeType is an XDR Typedef defines as:
 ///
 /// ```text
@@ -17197,6 +18787,7 @@ impl WriteXdr for EnvelopeType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct UpgradeType(pub BytesM<128>);
 
@@ -17306,6 +18897,7 @@ impl AsRef<[u8]> for UpgradeType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum StellarValueType {
     Basic = 0,
@@ -17410,6 +19002,7 @@ impl WriteXdr for StellarValueType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerCloseValueSignature {
     pub node_id: NodeId,
     pub signature: Signature,
@@ -17458,6 +19051,7 @@ impl WriteXdr for LedgerCloseValueSignature {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum StellarValueExt {
     Basic,
@@ -17579,6 +19173,7 @@ impl WriteXdr for StellarValueExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StellarValue {
     pub tx_set_hash: Hash,
     pub close_time: TimePoint,
@@ -17640,6 +19235,7 @@ pub const MASK_LEDGER_HEADER_FLAGS: u64 = 0x7;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LedgerHeaderFlags {
     TradingFlag = 1,
@@ -17752,6 +19348,7 @@ impl WriteXdr for LedgerHeaderFlags {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerHeaderExtensionV1Ext {
     V0,
@@ -17857,6 +19454,7 @@ impl WriteXdr for LedgerHeaderExtensionV1Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerHeaderExtensionV1 {
     pub flags: u32,
     pub ext: LedgerHeaderExtensionV1Ext,
@@ -17905,6 +19503,7 @@ impl WriteXdr for LedgerHeaderExtensionV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerHeaderExt {
     V0,
@@ -18043,6 +19642,7 @@ impl WriteXdr for LedgerHeaderExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerHeader {
     pub ledger_version: u32,
     pub previous_ledger_hash: Hash,
@@ -18133,6 +19733,7 @@ impl WriteXdr for LedgerHeader {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LedgerUpgradeType {
     Version = 1,
@@ -18267,6 +19868,7 @@ impl WriteXdr for LedgerUpgradeType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigUpgradeSetKey {
     pub contract_id: Hash,
     pub content_hash: Hash,
@@ -18328,6 +19930,7 @@ impl WriteXdr for ConfigUpgradeSetKey {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerUpgrade {
     Version(u32),
@@ -18473,6 +20076,7 @@ impl WriteXdr for LedgerUpgrade {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ConfigUpgradeSet {
     pub updated_entry: VecM<ConfigSettingEntry>,
 }
@@ -18498,407 +20102,6 @@ impl WriteXdr for ConfigUpgradeSet {
     }
 }
 
-/// BucketEntryType is an XDR Enum defines as:
-///
-/// ```text
-/// enum BucketEntryType
-/// {
-///     METAENTRY =
-///         -1, // At-and-after protocol 11: bucket metadata, should come first.
-///     LIVEENTRY = 0, // Before protocol 11: created-or-updated;
-///                    // At-and-after protocol 11: only updated.
-///     DEADENTRY = 1,
-///     INITENTRY = 2 // At-and-after protocol 11: only created.
-/// };
-/// ```
-///
-// enum
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
-#[cfg_attr(
-    all(feature = "serde", feature = "alloc"),
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "snake_case")
-)]
-#[repr(i32)]
-pub enum BucketEntryType {
-    Metaentry = -1,
-    Liveentry = 0,
-    Deadentry = 1,
-    Initentry = 2,
-}
-
-impl BucketEntryType {
-    pub const VARIANTS: [BucketEntryType; 4] = [
-        BucketEntryType::Metaentry,
-        BucketEntryType::Liveentry,
-        BucketEntryType::Deadentry,
-        BucketEntryType::Initentry,
-    ];
-    pub const VARIANTS_STR: [&'static str; 4] =
-        ["Metaentry", "Liveentry", "Deadentry", "Initentry"];
-
-    #[must_use]
-    pub const fn name(&self) -> &'static str {
-        match self {
-            Self::Metaentry => "Metaentry",
-            Self::Liveentry => "Liveentry",
-            Self::Deadentry => "Deadentry",
-            Self::Initentry => "Initentry",
-        }
-    }
-
-    #[must_use]
-    pub const fn variants() -> [BucketEntryType; 4] {
-        Self::VARIANTS
-    }
-}
-
-impl Name for BucketEntryType {
-    #[must_use]
-    fn name(&self) -> &'static str {
-        Self::name(self)
-    }
-}
-
-impl Variants<BucketEntryType> for BucketEntryType {
-    fn variants() -> slice::Iter<'static, BucketEntryType> {
-        Self::VARIANTS.iter()
-    }
-}
-
-impl Enum for BucketEntryType {}
-
-impl fmt::Display for BucketEntryType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
-    }
-}
-
-impl TryFrom<i32> for BucketEntryType {
-    type Error = Error;
-
-    fn try_from(i: i32) -> Result<Self> {
-        let e = match i {
-            -1 => BucketEntryType::Metaentry,
-            0 => BucketEntryType::Liveentry,
-            1 => BucketEntryType::Deadentry,
-            2 => BucketEntryType::Initentry,
-            #[allow(unreachable_patterns)]
-            _ => return Err(Error::Invalid),
-        };
-        Ok(e)
-    }
-}
-
-impl From<BucketEntryType> for i32 {
-    #[must_use]
-    fn from(e: BucketEntryType) -> Self {
-        e as Self
-    }
-}
-
-impl ReadXdr for BucketEntryType {
-    #[cfg(feature = "std")]
-    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
-        r.with_limited_depth(|r| {
-            let e = i32::read_xdr(r)?;
-            let v: Self = e.try_into()?;
-            Ok(v)
-        })
-    }
-}
-
-impl WriteXdr for BucketEntryType {
-    #[cfg(feature = "std")]
-    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
-        w.with_limited_depth(|w| {
-            let i: i32 = (*self).into();
-            i.write_xdr(w)
-        })
-    }
-}
-
-/// BucketMetadataExt is an XDR NestedUnion defines as:
-///
-/// ```text
-/// union switch (int v)
-///     {
-///     case 0:
-///         void;
-///     }
-/// ```
-///
-// union with discriminant i32
-#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
-#[cfg_attr(
-    all(feature = "serde", feature = "alloc"),
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "snake_case")
-)]
-#[allow(clippy::large_enum_variant)]
-pub enum BucketMetadataExt {
-    V0,
-}
-
-impl BucketMetadataExt {
-    pub const VARIANTS: [i32; 1] = [0];
-    pub const VARIANTS_STR: [&'static str; 1] = ["V0"];
-
-    #[must_use]
-    pub const fn name(&self) -> &'static str {
-        match self {
-            Self::V0 => "V0",
-        }
-    }
-
-    #[must_use]
-    pub const fn discriminant(&self) -> i32 {
-        #[allow(clippy::match_same_arms)]
-        match self {
-            Self::V0 => 0,
-        }
-    }
-
-    #[must_use]
-    pub const fn variants() -> [i32; 1] {
-        Self::VARIANTS
-    }
-}
-
-impl Name for BucketMetadataExt {
-    #[must_use]
-    fn name(&self) -> &'static str {
-        Self::name(self)
-    }
-}
-
-impl Discriminant<i32> for BucketMetadataExt {
-    #[must_use]
-    fn discriminant(&self) -> i32 {
-        Self::discriminant(self)
-    }
-}
-
-impl Variants<i32> for BucketMetadataExt {
-    fn variants() -> slice::Iter<'static, i32> {
-        Self::VARIANTS.iter()
-    }
-}
-
-impl Union<i32> for BucketMetadataExt {}
-
-impl ReadXdr for BucketMetadataExt {
-    #[cfg(feature = "std")]
-    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
-        r.with_limited_depth(|r| {
-            let dv: i32 = <i32 as ReadXdr>::read_xdr(r)?;
-            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
-            let v = match dv {
-                0 => Self::V0,
-                #[allow(unreachable_patterns)]
-                _ => return Err(Error::Invalid),
-            };
-            Ok(v)
-        })
-    }
-}
-
-impl WriteXdr for BucketMetadataExt {
-    #[cfg(feature = "std")]
-    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
-        w.with_limited_depth(|w| {
-            self.discriminant().write_xdr(w)?;
-            #[allow(clippy::match_same_arms)]
-            match self {
-                Self::V0 => ().write_xdr(w)?,
-            };
-            Ok(())
-        })
-    }
-}
-
-/// BucketMetadata is an XDR Struct defines as:
-///
-/// ```text
-/// struct BucketMetadata
-/// {
-///     // Indicates the protocol version used to create / merge this bucket.
-///     uint32 ledgerVersion;
-///
-///     // reserved for future use
-///     union switch (int v)
-///     {
-///     case 0:
-///         void;
-///     }
-///     ext;
-/// };
-/// ```
-///
-#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
-#[cfg_attr(
-    all(feature = "serde", feature = "alloc"),
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "snake_case")
-)]
-pub struct BucketMetadata {
-    pub ledger_version: u32,
-    pub ext: BucketMetadataExt,
-}
-
-impl ReadXdr for BucketMetadata {
-    #[cfg(feature = "std")]
-    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
-        r.with_limited_depth(|r| {
-            Ok(Self {
-                ledger_version: u32::read_xdr(r)?,
-                ext: BucketMetadataExt::read_xdr(r)?,
-            })
-        })
-    }
-}
-
-impl WriteXdr for BucketMetadata {
-    #[cfg(feature = "std")]
-    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
-        w.with_limited_depth(|w| {
-            self.ledger_version.write_xdr(w)?;
-            self.ext.write_xdr(w)?;
-            Ok(())
-        })
-    }
-}
-
-/// BucketEntry is an XDR Union defines as:
-///
-/// ```text
-/// union BucketEntry switch (BucketEntryType type)
-/// {
-/// case LIVEENTRY:
-/// case INITENTRY:
-///     LedgerEntry liveEntry;
-///
-/// case DEADENTRY:
-///     LedgerKey deadEntry;
-/// case METAENTRY:
-///     BucketMetadata metaEntry;
-/// };
-/// ```
-///
-// union with discriminant BucketEntryType
-#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
-#[cfg_attr(
-    all(feature = "serde", feature = "alloc"),
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "snake_case")
-)]
-#[allow(clippy::large_enum_variant)]
-pub enum BucketEntry {
-    Liveentry(LedgerEntry),
-    Initentry(LedgerEntry),
-    Deadentry(LedgerKey),
-    Metaentry(BucketMetadata),
-}
-
-impl BucketEntry {
-    pub const VARIANTS: [BucketEntryType; 4] = [
-        BucketEntryType::Liveentry,
-        BucketEntryType::Initentry,
-        BucketEntryType::Deadentry,
-        BucketEntryType::Metaentry,
-    ];
-    pub const VARIANTS_STR: [&'static str; 4] =
-        ["Liveentry", "Initentry", "Deadentry", "Metaentry"];
-
-    #[must_use]
-    pub const fn name(&self) -> &'static str {
-        match self {
-            Self::Liveentry(_) => "Liveentry",
-            Self::Initentry(_) => "Initentry",
-            Self::Deadentry(_) => "Deadentry",
-            Self::Metaentry(_) => "Metaentry",
-        }
-    }
-
-    #[must_use]
-    pub const fn discriminant(&self) -> BucketEntryType {
-        #[allow(clippy::match_same_arms)]
-        match self {
-            Self::Liveentry(_) => BucketEntryType::Liveentry,
-            Self::Initentry(_) => BucketEntryType::Initentry,
-            Self::Deadentry(_) => BucketEntryType::Deadentry,
-            Self::Metaentry(_) => BucketEntryType::Metaentry,
-        }
-    }
-
-    #[must_use]
-    pub const fn variants() -> [BucketEntryType; 4] {
-        Self::VARIANTS
-    }
-}
-
-impl Name for BucketEntry {
-    #[must_use]
-    fn name(&self) -> &'static str {
-        Self::name(self)
-    }
-}
-
-impl Discriminant<BucketEntryType> for BucketEntry {
-    #[must_use]
-    fn discriminant(&self) -> BucketEntryType {
-        Self::discriminant(self)
-    }
-}
-
-impl Variants<BucketEntryType> for BucketEntry {
-    fn variants() -> slice::Iter<'static, BucketEntryType> {
-        Self::VARIANTS.iter()
-    }
-}
-
-impl Union<BucketEntryType> for BucketEntry {}
-
-impl ReadXdr for BucketEntry {
-    #[cfg(feature = "std")]
-    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
-        r.with_limited_depth(|r| {
-            let dv: BucketEntryType = <BucketEntryType as ReadXdr>::read_xdr(r)?;
-            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
-            let v = match dv {
-                BucketEntryType::Liveentry => Self::Liveentry(LedgerEntry::read_xdr(r)?),
-                BucketEntryType::Initentry => Self::Initentry(LedgerEntry::read_xdr(r)?),
-                BucketEntryType::Deadentry => Self::Deadentry(LedgerKey::read_xdr(r)?),
-                BucketEntryType::Metaentry => Self::Metaentry(BucketMetadata::read_xdr(r)?),
-                #[allow(unreachable_patterns)]
-                _ => return Err(Error::Invalid),
-            };
-            Ok(v)
-        })
-    }
-}
-
-impl WriteXdr for BucketEntry {
-    #[cfg(feature = "std")]
-    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
-        w.with_limited_depth(|w| {
-            self.discriminant().write_xdr(w)?;
-            #[allow(clippy::match_same_arms)]
-            match self {
-                Self::Liveentry(v) => v.write_xdr(w)?,
-                Self::Initentry(v) => v.write_xdr(w)?,
-                Self::Deadentry(v) => v.write_xdr(w)?,
-                Self::Metaentry(v) => v.write_xdr(w)?,
-            };
-            Ok(())
-        })
-    }
-}
-
 /// TxSetComponentType is an XDR Enum defines as:
 ///
 /// ```text
@@ -18918,6 +20121,7 @@ impl WriteXdr for BucketEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum TxSetComponentType {
     TxsetCompTxsMaybeDiscountedFee = 0,
@@ -19003,6 +20207,264 @@ impl WriteXdr for TxSetComponentType {
     }
 }
 
+/// TxExecutionThread is an XDR Typedef defines as:
+///
+/// ```text
+/// typedef TransactionEnvelope TxExecutionThread<>;
+/// ```
+///
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[derive(Default)]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[derive(Debug)]
+pub struct TxExecutionThread(pub VecM<TransactionEnvelope>);
+
+impl From<TxExecutionThread> for VecM<TransactionEnvelope> {
+    #[must_use]
+    fn from(x: TxExecutionThread) -> Self {
+        x.0
+    }
+}
+
+impl From<VecM<TransactionEnvelope>> for TxExecutionThread {
+    #[must_use]
+    fn from(x: VecM<TransactionEnvelope>) -> Self {
+        TxExecutionThread(x)
+    }
+}
+
+impl AsRef<VecM<TransactionEnvelope>> for TxExecutionThread {
+    #[must_use]
+    fn as_ref(&self) -> &VecM<TransactionEnvelope> {
+        &self.0
+    }
+}
+
+impl ReadXdr for TxExecutionThread {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let i = VecM::<TransactionEnvelope>::read_xdr(r)?;
+            let v = TxExecutionThread(i);
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for TxExecutionThread {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| self.0.write_xdr(w))
+    }
+}
+
+impl Deref for TxExecutionThread {
+    type Target = VecM<TransactionEnvelope>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<TxExecutionThread> for Vec<TransactionEnvelope> {
+    #[must_use]
+    fn from(x: TxExecutionThread) -> Self {
+        x.0 .0
+    }
+}
+
+impl TryFrom<Vec<TransactionEnvelope>> for TxExecutionThread {
+    type Error = Error;
+    fn try_from(x: Vec<TransactionEnvelope>) -> Result<Self> {
+        Ok(TxExecutionThread(x.try_into()?))
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TryFrom<&Vec<TransactionEnvelope>> for TxExecutionThread {
+    type Error = Error;
+    fn try_from(x: &Vec<TransactionEnvelope>) -> Result<Self> {
+        Ok(TxExecutionThread(x.try_into()?))
+    }
+}
+
+impl AsRef<Vec<TransactionEnvelope>> for TxExecutionThread {
+    #[must_use]
+    fn as_ref(&self) -> &Vec<TransactionEnvelope> {
+        &self.0 .0
+    }
+}
+
+impl AsRef<[TransactionEnvelope]> for TxExecutionThread {
+    #[cfg(feature = "alloc")]
+    #[must_use]
+    fn as_ref(&self) -> &[TransactionEnvelope] {
+        &self.0 .0
+    }
+    #[cfg(not(feature = "alloc"))]
+    #[must_use]
+    fn as_ref(&self) -> &[TransactionEnvelope] {
+        self.0 .0
+    }
+}
+
+/// ParallelTxExecutionStage is an XDR Typedef defines as:
+///
+/// ```text
+/// typedef TxExecutionThread ParallelTxExecutionStage<>;
+/// ```
+///
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[derive(Default)]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[derive(Debug)]
+pub struct ParallelTxExecutionStage(pub VecM<TxExecutionThread>);
+
+impl From<ParallelTxExecutionStage> for VecM<TxExecutionThread> {
+    #[must_use]
+    fn from(x: ParallelTxExecutionStage) -> Self {
+        x.0
+    }
+}
+
+impl From<VecM<TxExecutionThread>> for ParallelTxExecutionStage {
+    #[must_use]
+    fn from(x: VecM<TxExecutionThread>) -> Self {
+        ParallelTxExecutionStage(x)
+    }
+}
+
+impl AsRef<VecM<TxExecutionThread>> for ParallelTxExecutionStage {
+    #[must_use]
+    fn as_ref(&self) -> &VecM<TxExecutionThread> {
+        &self.0
+    }
+}
+
+impl ReadXdr for ParallelTxExecutionStage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let i = VecM::<TxExecutionThread>::read_xdr(r)?;
+            let v = ParallelTxExecutionStage(i);
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for ParallelTxExecutionStage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| self.0.write_xdr(w))
+    }
+}
+
+impl Deref for ParallelTxExecutionStage {
+    type Target = VecM<TxExecutionThread>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<ParallelTxExecutionStage> for Vec<TxExecutionThread> {
+    #[must_use]
+    fn from(x: ParallelTxExecutionStage) -> Self {
+        x.0 .0
+    }
+}
+
+impl TryFrom<Vec<TxExecutionThread>> for ParallelTxExecutionStage {
+    type Error = Error;
+    fn try_from(x: Vec<TxExecutionThread>) -> Result<Self> {
+        Ok(ParallelTxExecutionStage(x.try_into()?))
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TryFrom<&Vec<TxExecutionThread>> for ParallelTxExecutionStage {
+    type Error = Error;
+    fn try_from(x: &Vec<TxExecutionThread>) -> Result<Self> {
+        Ok(ParallelTxExecutionStage(x.try_into()?))
+    }
+}
+
+impl AsRef<Vec<TxExecutionThread>> for ParallelTxExecutionStage {
+    #[must_use]
+    fn as_ref(&self) -> &Vec<TxExecutionThread> {
+        &self.0 .0
+    }
+}
+
+impl AsRef<[TxExecutionThread]> for ParallelTxExecutionStage {
+    #[cfg(feature = "alloc")]
+    #[must_use]
+    fn as_ref(&self) -> &[TxExecutionThread] {
+        &self.0 .0
+    }
+    #[cfg(not(feature = "alloc"))]
+    #[must_use]
+    fn as_ref(&self) -> &[TxExecutionThread] {
+        self.0 .0
+    }
+}
+
+/// ParallelTxsComponent is an XDR Struct defines as:
+///
+/// ```text
+/// struct ParallelTxsComponent
+/// {
+///   int64* baseFee;
+///   ParallelTxExecutionStage executionStages<>;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ParallelTxsComponent {
+    pub base_fee: Option<i64>,
+    pub execution_stages: VecM<ParallelTxExecutionStage>,
+}
+
+impl ReadXdr for ParallelTxsComponent {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                base_fee: Option::<i64>::read_xdr(r)?,
+                execution_stages: VecM::<ParallelTxExecutionStage>::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ParallelTxsComponent {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.base_fee.write_xdr(w)?;
+            self.execution_stages.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// TxSetComponentTxsMaybeDiscountedFee is an XDR NestedStruct defines as:
 ///
 /// ```text
@@ -19020,6 +20482,7 @@ impl WriteXdr for TxSetComponentType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TxSetComponentTxsMaybeDiscountedFee {
     pub base_fee: Option<i64>,
     pub txs: VecM<TransactionEnvelope>,
@@ -19070,6 +20533,7 @@ impl WriteXdr for TxSetComponentTxsMaybeDiscountedFee {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TxSetComponent {
     TxsetCompTxsMaybeDiscountedFee(TxSetComponentTxsMaybeDiscountedFee),
@@ -19166,6 +20630,8 @@ impl WriteXdr for TxSetComponent {
 /// {
 /// case 0:
 ///     TxSetComponent v0Components<>;
+/// case 1:
+///     ParallelTxsComponent parallelTxsComponent;
 /// };
 /// ```
 ///
@@ -19177,19 +20643,22 @@ impl WriteXdr for TxSetComponent {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionPhase {
     V0(VecM<TxSetComponent>),
+    V1(ParallelTxsComponent),
 }
 
 impl TransactionPhase {
-    pub const VARIANTS: [i32; 1] = [0];
-    pub const VARIANTS_STR: [&'static str; 1] = ["V0"];
+    pub const VARIANTS: [i32; 2] = [0, 1];
+    pub const VARIANTS_STR: [&'static str; 2] = ["V0", "V1"];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::V0(_) => "V0",
+            Self::V1(_) => "V1",
         }
     }
 
@@ -19198,11 +20667,12 @@ impl TransactionPhase {
         #[allow(clippy::match_same_arms)]
         match self {
             Self::V0(_) => 0,
+            Self::V1(_) => 1,
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [i32; 1] {
+    pub const fn variants() -> [i32; 2] {
         Self::VARIANTS
     }
 }
@@ -19237,6 +20707,7 @@ impl ReadXdr for TransactionPhase {
             #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
             let v = match dv {
                 0 => Self::V0(VecM::<TxSetComponent>::read_xdr(r)?),
+                1 => Self::V1(ParallelTxsComponent::read_xdr(r)?),
                 #[allow(unreachable_patterns)]
                 _ => return Err(Error::Invalid),
             };
@@ -19253,6 +20724,7 @@ impl WriteXdr for TransactionPhase {
             #[allow(clippy::match_same_arms)]
             match self {
                 Self::V0(v) => v.write_xdr(w)?,
+                Self::V1(v) => v.write_xdr(w)?,
             };
             Ok(())
         })
@@ -19276,6 +20748,7 @@ impl WriteXdr for TransactionPhase {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionSet {
     pub previous_ledger_hash: Hash,
     pub txs: VecM<TransactionEnvelope>,
@@ -19321,6 +20794,7 @@ impl WriteXdr for TransactionSet {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionSetV1 {
     pub previous_ledger_hash: Hash,
     pub phases: VecM<TransactionPhase>,
@@ -19368,6 +20842,7 @@ impl WriteXdr for TransactionSetV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum GeneralizedTransactionSet {
     V1(TransactionSetV1),
@@ -19467,6 +20942,7 @@ impl WriteXdr for GeneralizedTransactionSet {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionResultPair {
     pub transaction_hash: Hash,
     pub result: TransactionResult,
@@ -19511,6 +20987,7 @@ impl WriteXdr for TransactionResultPair {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionResultSet {
     pub results: VecM<TransactionResultPair>,
 }
@@ -19556,6 +21033,7 @@ impl WriteXdr for TransactionResultSet {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionHistoryEntryExt {
     V0,
@@ -19670,6 +21148,7 @@ impl WriteXdr for TransactionHistoryEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionHistoryEntry {
     pub ledger_seq: u32,
     pub tx_set: TransactionSet,
@@ -19719,6 +21198,7 @@ impl WriteXdr for TransactionHistoryEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionHistoryResultEntryExt {
     V0,
@@ -19826,6 +21306,7 @@ impl WriteXdr for TransactionHistoryResultEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionHistoryResultEntry {
     pub ledger_seq: u32,
     pub tx_result_set: TransactionResultSet,
@@ -19875,6 +21356,7 @@ impl WriteXdr for TransactionHistoryResultEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerHeaderHistoryEntryExt {
     V0,
@@ -19982,6 +21464,7 @@ impl WriteXdr for LedgerHeaderHistoryEntryExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerHeaderHistoryEntry {
     pub hash: Hash,
     pub header: LedgerHeader,
@@ -20030,6 +21513,7 @@ impl WriteXdr for LedgerHeaderHistoryEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerScpMessages {
     pub ledger_seq: u32,
     pub messages: VecM<ScpEnvelope>,
@@ -20075,6 +21559,7 @@ impl WriteXdr for LedgerScpMessages {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ScpHistoryEntryV0 {
     pub quorum_sets: VecM<ScpQuorumSet>,
     pub ledger_messages: LedgerScpMessages,
@@ -20121,6 +21606,7 @@ impl WriteXdr for ScpHistoryEntryV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ScpHistoryEntry {
     V0(ScpHistoryEntryV0),
@@ -20223,6 +21709,7 @@ impl WriteXdr for ScpHistoryEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LedgerEntryChangeType {
     Created = 0,
@@ -20345,6 +21832,7 @@ impl WriteXdr for LedgerEntryChangeType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerEntryChange {
     Created(LedgerEntry),
@@ -20461,6 +21949,7 @@ impl WriteXdr for LedgerEntryChange {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct LedgerEntryChanges(pub VecM<LedgerEntryChange>);
 
@@ -20568,6 +22057,7 @@ impl AsRef<[LedgerEntryChange]> for LedgerEntryChanges {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct OperationMeta {
     pub changes: LedgerEntryChanges,
 }
@@ -20610,6 +22100,7 @@ impl WriteXdr for OperationMeta {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionMetaV1 {
     pub tx_changes: LedgerEntryChanges,
     pub operations: VecM<OperationMeta>,
@@ -20658,6 +22149,7 @@ impl WriteXdr for TransactionMetaV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionMetaV2 {
     pub tx_changes_before: LedgerEntryChanges,
     pub operations: VecM<OperationMeta>,
@@ -20708,6 +22200,7 @@ impl WriteXdr for TransactionMetaV2 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ContractEventType {
     System = 0,
@@ -20819,6 +22312,7 @@ impl WriteXdr for ContractEventType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractEventV0 {
     pub topics: VecM<ScVal>,
     pub data: ScVal,
@@ -20869,6 +22363,7 @@ impl WriteXdr for ContractEventV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ContractEventBody {
     V0(ContractEventV0),
@@ -20983,6 +22478,7 @@ impl WriteXdr for ContractEventBody {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractEvent {
     pub ext: ExtensionPoint,
     pub contract_id: Option<Hash>,
@@ -21034,6 +22530,7 @@ impl WriteXdr for ContractEvent {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DiagnosticEvent {
     pub in_successful_contract_call: bool,
     pub event: ContractEvent,
@@ -21107,6 +22604,7 @@ impl WriteXdr for DiagnosticEvent {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanTransactionMetaExtV1 {
     pub ext: ExtensionPoint,
     pub total_non_refundable_resource_fee_charged: i64,
@@ -21162,6 +22660,7 @@ impl WriteXdr for SorobanTransactionMetaExtV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum SorobanTransactionMetaExt {
     V0,
@@ -21274,6 +22773,7 @@ impl WriteXdr for SorobanTransactionMetaExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanTransactionMeta {
     pub ext: SorobanTransactionMetaExt,
     pub events: VecM<ContractEvent>,
@@ -21332,6 +22832,7 @@ impl WriteXdr for SorobanTransactionMeta {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionMetaV3 {
     pub ext: ExtensionPoint,
     pub tx_changes_before: LedgerEntryChanges,
@@ -21386,6 +22887,7 @@ impl WriteXdr for TransactionMetaV3 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InvokeHostFunctionSuccessPreImage {
     pub return_value: ScVal,
     pub events: VecM<ContractEvent>,
@@ -21438,6 +22940,7 @@ impl WriteXdr for InvokeHostFunctionSuccessPreImage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionMeta {
     V0(VecM<OperationMeta>),
@@ -21553,6 +23056,7 @@ impl WriteXdr for TransactionMeta {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionResultMeta {
     pub result: TransactionResultPair,
     pub fee_processing: LedgerEntryChanges,
@@ -21601,6 +23105,7 @@ impl WriteXdr for TransactionResultMeta {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct UpgradeEntryMeta {
     pub upgrade: LedgerUpgrade,
     pub changes: LedgerEntryChanges,
@@ -21658,6 +23163,7 @@ impl WriteXdr for UpgradeEntryMeta {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerCloseMetaV0 {
     pub ledger_header: LedgerHeaderHistoryEntry,
     pub tx_set: TransactionSet,
@@ -21712,6 +23218,7 @@ impl WriteXdr for LedgerCloseMetaV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerCloseMetaExtV1 {
     pub ext: ExtensionPoint,
     pub soroban_fee_write1_kb: i64,
@@ -21760,6 +23267,7 @@ impl WriteXdr for LedgerCloseMetaExtV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerCloseMetaExt {
     V0,
@@ -21889,6 +23397,7 @@ impl WriteXdr for LedgerCloseMetaExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerCloseMetaV1 {
     pub ext: LedgerCloseMetaExt,
     pub ledger_header: LedgerHeaderHistoryEntry,
@@ -21958,6 +23467,7 @@ impl WriteXdr for LedgerCloseMetaV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LedgerCloseMeta {
     V0(LedgerCloseMetaV0),
@@ -22066,6 +23576,7 @@ impl WriteXdr for LedgerCloseMeta {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ErrorCode {
     Misc = 0,
@@ -22185,6 +23696,7 @@ impl WriteXdr for ErrorCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SError {
     pub code: ErrorCode,
     pub msg: StringM<100>,
@@ -22229,6 +23741,7 @@ impl WriteXdr for SError {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SendMore {
     pub num_messages: u32,
 }
@@ -22271,6 +23784,7 @@ impl WriteXdr for SendMore {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SendMoreExtended {
     pub num_messages: u32,
     pub num_bytes: u32,
@@ -22317,6 +23831,7 @@ impl WriteXdr for SendMoreExtended {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AuthCert {
     pub pubkey: Curve25519Public,
     pub expiration: u64,
@@ -22372,6 +23887,7 @@ impl WriteXdr for AuthCert {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Hello {
     pub ledger_version: u32,
     pub overlay_version: u32,
@@ -22445,6 +23961,7 @@ pub const AUTH_MSG_FLAG_FLOW_CONTROL_BYTES_REQUESTED: u64 = 200;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Auth {
     pub flags: i32,
 }
@@ -22488,6 +24005,7 @@ impl WriteXdr for Auth {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum IpAddrType {
     IPv4 = 0,
@@ -22595,6 +24113,7 @@ impl WriteXdr for IpAddrType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum PeerAddressIp {
     IPv4([u8; 4]),
@@ -22707,6 +24226,7 @@ impl WriteXdr for PeerAddressIp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PeerAddress {
     pub ip: PeerAddressIp,
     pub port: u32,
@@ -22772,7 +24292,12 @@ impl WriteXdr for PeerAddress {
 ///     SEND_MORE_EXTENDED = 20,
 ///
 ///     FLOOD_ADVERT = 18,
-///     FLOOD_DEMAND = 19
+///     FLOOD_DEMAND = 19,
+///
+///     TIME_SLICED_SURVEY_REQUEST = 21,
+///     TIME_SLICED_SURVEY_RESPONSE = 22,
+///     TIME_SLICED_SURVEY_START_COLLECTING = 23,
+///     TIME_SLICED_SURVEY_STOP_COLLECTING = 24
 /// };
 /// ```
 ///
@@ -22784,6 +24309,7 @@ impl WriteXdr for PeerAddress {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum MessageType {
     ErrorMsg = 0,
@@ -22806,10 +24332,14 @@ pub enum MessageType {
     SendMoreExtended = 20,
     FloodAdvert = 18,
     FloodDemand = 19,
+    TimeSlicedSurveyRequest = 21,
+    TimeSlicedSurveyResponse = 22,
+    TimeSlicedSurveyStartCollecting = 23,
+    TimeSlicedSurveyStopCollecting = 24,
 }
 
 impl MessageType {
-    pub const VARIANTS: [MessageType; 20] = [
+    pub const VARIANTS: [MessageType; 24] = [
         MessageType::ErrorMsg,
         MessageType::Auth,
         MessageType::DontHave,
@@ -22830,8 +24360,12 @@ impl MessageType {
         MessageType::SendMoreExtended,
         MessageType::FloodAdvert,
         MessageType::FloodDemand,
+        MessageType::TimeSlicedSurveyRequest,
+        MessageType::TimeSlicedSurveyResponse,
+        MessageType::TimeSlicedSurveyStartCollecting,
+        MessageType::TimeSlicedSurveyStopCollecting,
     ];
-    pub const VARIANTS_STR: [&'static str; 20] = [
+    pub const VARIANTS_STR: [&'static str; 24] = [
         "ErrorMsg",
         "Auth",
         "DontHave",
@@ -22852,6 +24386,10 @@ impl MessageType {
         "SendMoreExtended",
         "FloodAdvert",
         "FloodDemand",
+        "TimeSlicedSurveyRequest",
+        "TimeSlicedSurveyResponse",
+        "TimeSlicedSurveyStartCollecting",
+        "TimeSlicedSurveyStopCollecting",
     ];
 
     #[must_use]
@@ -22877,11 +24415,15 @@ impl MessageType {
             Self::SendMoreExtended => "SendMoreExtended",
             Self::FloodAdvert => "FloodAdvert",
             Self::FloodDemand => "FloodDemand",
+            Self::TimeSlicedSurveyRequest => "TimeSlicedSurveyRequest",
+            Self::TimeSlicedSurveyResponse => "TimeSlicedSurveyResponse",
+            Self::TimeSlicedSurveyStartCollecting => "TimeSlicedSurveyStartCollecting",
+            Self::TimeSlicedSurveyStopCollecting => "TimeSlicedSurveyStopCollecting",
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [MessageType; 20] {
+    pub const fn variants() -> [MessageType; 24] {
         Self::VARIANTS
     }
 }
@@ -22932,6 +24474,10 @@ impl TryFrom<i32> for MessageType {
             20 => MessageType::SendMoreExtended,
             18 => MessageType::FloodAdvert,
             19 => MessageType::FloodDemand,
+            21 => MessageType::TimeSlicedSurveyRequest,
+            22 => MessageType::TimeSlicedSurveyResponse,
+            23 => MessageType::TimeSlicedSurveyStartCollecting,
+            24 => MessageType::TimeSlicedSurveyStopCollecting,
             #[allow(unreachable_patterns)]
             _ => return Err(Error::Invalid),
         };
@@ -22984,6 +24530,7 @@ impl WriteXdr for MessageType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DontHave {
     pub type_: MessageType,
     pub req_hash: Uint256,
@@ -23017,7 +24564,8 @@ impl WriteXdr for DontHave {
 /// ```text
 /// enum SurveyMessageCommandType
 /// {
-///     SURVEY_TOPOLOGY = 0
+///     SURVEY_TOPOLOGY = 0,
+///     TIME_SLICED_SURVEY_TOPOLOGY = 1
 /// };
 /// ```
 ///
@@ -23029,24 +24577,30 @@ impl WriteXdr for DontHave {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SurveyMessageCommandType {
     SurveyTopology = 0,
+    TimeSlicedSurveyTopology = 1,
 }
 
 impl SurveyMessageCommandType {
-    pub const VARIANTS: [SurveyMessageCommandType; 1] = [SurveyMessageCommandType::SurveyTopology];
-    pub const VARIANTS_STR: [&'static str; 1] = ["SurveyTopology"];
+    pub const VARIANTS: [SurveyMessageCommandType; 2] = [
+        SurveyMessageCommandType::SurveyTopology,
+        SurveyMessageCommandType::TimeSlicedSurveyTopology,
+    ];
+    pub const VARIANTS_STR: [&'static str; 2] = ["SurveyTopology", "TimeSlicedSurveyTopology"];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::SurveyTopology => "SurveyTopology",
+            Self::TimeSlicedSurveyTopology => "TimeSlicedSurveyTopology",
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [SurveyMessageCommandType; 1] {
+    pub const fn variants() -> [SurveyMessageCommandType; 2] {
         Self::VARIANTS
     }
 }
@@ -23078,6 +24632,7 @@ impl TryFrom<i32> for SurveyMessageCommandType {
     fn try_from(i: i32) -> Result<Self> {
         let e = match i {
             0 => SurveyMessageCommandType::SurveyTopology,
+            1 => SurveyMessageCommandType::TimeSlicedSurveyTopology,
             #[allow(unreachable_patterns)]
             _ => return Err(Error::Invalid),
         };
@@ -23119,7 +24674,8 @@ impl WriteXdr for SurveyMessageCommandType {
 /// enum SurveyMessageResponseType
 /// {
 ///     SURVEY_TOPOLOGY_RESPONSE_V0 = 0,
-///     SURVEY_TOPOLOGY_RESPONSE_V1 = 1
+///     SURVEY_TOPOLOGY_RESPONSE_V1 = 1,
+///     SURVEY_TOPOLOGY_RESPONSE_V2 = 2
 /// };
 /// ```
 ///
@@ -23131,27 +24687,33 @@ impl WriteXdr for SurveyMessageCommandType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SurveyMessageResponseType {
     V0 = 0,
     V1 = 1,
+    V2 = 2,
 }
 
 impl SurveyMessageResponseType {
-    pub const VARIANTS: [SurveyMessageResponseType; 2] =
-        [SurveyMessageResponseType::V0, SurveyMessageResponseType::V1];
-    pub const VARIANTS_STR: [&'static str; 2] = ["V0", "V1"];
+    pub const VARIANTS: [SurveyMessageResponseType; 3] = [
+        SurveyMessageResponseType::V0,
+        SurveyMessageResponseType::V1,
+        SurveyMessageResponseType::V2,
+    ];
+    pub const VARIANTS_STR: [&'static str; 3] = ["V0", "V1", "V2"];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::V0 => "V0",
             Self::V1 => "V1",
+            Self::V2 => "V2",
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [SurveyMessageResponseType; 2] {
+    pub const fn variants() -> [SurveyMessageResponseType; 3] {
         Self::VARIANTS
     }
 }
@@ -23184,6 +24746,7 @@ impl TryFrom<i32> for SurveyMessageResponseType {
         let e = match i {
             0 => SurveyMessageResponseType::V0,
             1 => SurveyMessageResponseType::V1,
+            2 => SurveyMessageResponseType::V2,
             #[allow(unreachable_patterns)]
             _ => return Err(Error::Invalid),
         };
@@ -23219,6 +24782,198 @@ impl WriteXdr for SurveyMessageResponseType {
     }
 }
 
+/// TimeSlicedSurveyStartCollectingMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct TimeSlicedSurveyStartCollectingMessage
+/// {
+///     NodeID surveyorID;
+///     uint32 nonce;
+///     uint32 ledgerNum;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TimeSlicedSurveyStartCollectingMessage {
+    pub surveyor_id: NodeId,
+    pub nonce: u32,
+    pub ledger_num: u32,
+}
+
+impl ReadXdr for TimeSlicedSurveyStartCollectingMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                surveyor_id: NodeId::read_xdr(r)?,
+                nonce: u32::read_xdr(r)?,
+                ledger_num: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedSurveyStartCollectingMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.surveyor_id.write_xdr(w)?;
+            self.nonce.write_xdr(w)?;
+            self.ledger_num.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// SignedTimeSlicedSurveyStartCollectingMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct SignedTimeSlicedSurveyStartCollectingMessage
+/// {
+///     Signature signature;
+///     TimeSlicedSurveyStartCollectingMessage startCollecting;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SignedTimeSlicedSurveyStartCollectingMessage {
+    pub signature: Signature,
+    pub start_collecting: TimeSlicedSurveyStartCollectingMessage,
+}
+
+impl ReadXdr for SignedTimeSlicedSurveyStartCollectingMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                signature: Signature::read_xdr(r)?,
+                start_collecting: TimeSlicedSurveyStartCollectingMessage::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for SignedTimeSlicedSurveyStartCollectingMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.signature.write_xdr(w)?;
+            self.start_collecting.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// TimeSlicedSurveyStopCollectingMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct TimeSlicedSurveyStopCollectingMessage
+/// {
+///     NodeID surveyorID;
+///     uint32 nonce;
+///     uint32 ledgerNum;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TimeSlicedSurveyStopCollectingMessage {
+    pub surveyor_id: NodeId,
+    pub nonce: u32,
+    pub ledger_num: u32,
+}
+
+impl ReadXdr for TimeSlicedSurveyStopCollectingMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                surveyor_id: NodeId::read_xdr(r)?,
+                nonce: u32::read_xdr(r)?,
+                ledger_num: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedSurveyStopCollectingMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.surveyor_id.write_xdr(w)?;
+            self.nonce.write_xdr(w)?;
+            self.ledger_num.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// SignedTimeSlicedSurveyStopCollectingMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct SignedTimeSlicedSurveyStopCollectingMessage
+/// {
+///     Signature signature;
+///     TimeSlicedSurveyStopCollectingMessage stopCollecting;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SignedTimeSlicedSurveyStopCollectingMessage {
+    pub signature: Signature,
+    pub stop_collecting: TimeSlicedSurveyStopCollectingMessage,
+}
+
+impl ReadXdr for SignedTimeSlicedSurveyStopCollectingMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                signature: Signature::read_xdr(r)?,
+                stop_collecting: TimeSlicedSurveyStopCollectingMessage::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for SignedTimeSlicedSurveyStopCollectingMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.signature.write_xdr(w)?;
+            self.stop_collecting.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// SurveyRequestMessage is an XDR Struct defines as:
 ///
 /// ```text
@@ -23239,6 +24994,7 @@ impl WriteXdr for SurveyMessageResponseType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SurveyRequestMessage {
     pub surveyor_peer_id: NodeId,
     pub surveyed_peer_id: NodeId,
@@ -23276,6 +25032,60 @@ impl WriteXdr for SurveyRequestMessage {
     }
 }
 
+/// TimeSlicedSurveyRequestMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct TimeSlicedSurveyRequestMessage
+/// {
+///     SurveyRequestMessage request;
+///     uint32 nonce;
+///     uint32 inboundPeersIndex;
+///     uint32 outboundPeersIndex;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TimeSlicedSurveyRequestMessage {
+    pub request: SurveyRequestMessage,
+    pub nonce: u32,
+    pub inbound_peers_index: u32,
+    pub outbound_peers_index: u32,
+}
+
+impl ReadXdr for TimeSlicedSurveyRequestMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                request: SurveyRequestMessage::read_xdr(r)?,
+                nonce: u32::read_xdr(r)?,
+                inbound_peers_index: u32::read_xdr(r)?,
+                outbound_peers_index: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedSurveyRequestMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.request.write_xdr(w)?;
+            self.nonce.write_xdr(w)?;
+            self.inbound_peers_index.write_xdr(w)?;
+            self.outbound_peers_index.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// SignedSurveyRequestMessage is an XDR Struct defines as:
 ///
 /// ```text
@@ -23293,6 +25103,7 @@ impl WriteXdr for SurveyRequestMessage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SignedSurveyRequestMessage {
     pub request_signature: Signature,
     pub request: SurveyRequestMessage,
@@ -23321,6 +25132,52 @@ impl WriteXdr for SignedSurveyRequestMessage {
     }
 }
 
+/// SignedTimeSlicedSurveyRequestMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct SignedTimeSlicedSurveyRequestMessage
+/// {
+///     Signature requestSignature;
+///     TimeSlicedSurveyRequestMessage request;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SignedTimeSlicedSurveyRequestMessage {
+    pub request_signature: Signature,
+    pub request: TimeSlicedSurveyRequestMessage,
+}
+
+impl ReadXdr for SignedTimeSlicedSurveyRequestMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                request_signature: Signature::read_xdr(r)?,
+                request: TimeSlicedSurveyRequestMessage::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for SignedTimeSlicedSurveyRequestMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.request_signature.write_xdr(w)?;
+            self.request.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// EncryptedBody is an XDR Typedef defines as:
 ///
 /// ```text
@@ -23335,6 +25192,7 @@ impl WriteXdr for SignedSurveyRequestMessage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct EncryptedBody(pub BytesM<64000>);
 
@@ -23446,6 +25304,7 @@ impl AsRef<[u8]> for EncryptedBody {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SurveyResponseMessage {
     pub surveyor_peer_id: NodeId,
     pub surveyed_peer_id: NodeId,
@@ -23483,6 +25342,52 @@ impl WriteXdr for SurveyResponseMessage {
     }
 }
 
+/// TimeSlicedSurveyResponseMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct TimeSlicedSurveyResponseMessage
+/// {
+///     SurveyResponseMessage response;
+///     uint32 nonce;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TimeSlicedSurveyResponseMessage {
+    pub response: SurveyResponseMessage,
+    pub nonce: u32,
+}
+
+impl ReadXdr for TimeSlicedSurveyResponseMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                response: SurveyResponseMessage::read_xdr(r)?,
+                nonce: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedSurveyResponseMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.response.write_xdr(w)?;
+            self.nonce.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// SignedSurveyResponseMessage is an XDR Struct defines as:
 ///
 /// ```text
@@ -23500,6 +25405,7 @@ impl WriteXdr for SurveyResponseMessage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SignedSurveyResponseMessage {
     pub response_signature: Signature,
     pub response: SurveyResponseMessage,
@@ -23518,6 +25424,52 @@ impl ReadXdr for SignedSurveyResponseMessage {
 }
 
 impl WriteXdr for SignedSurveyResponseMessage {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.response_signature.write_xdr(w)?;
+            self.response.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// SignedTimeSlicedSurveyResponseMessage is an XDR Struct defines as:
+///
+/// ```text
+/// struct SignedTimeSlicedSurveyResponseMessage
+/// {
+///     Signature responseSignature;
+///     TimeSlicedSurveyResponseMessage response;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SignedTimeSlicedSurveyResponseMessage {
+    pub response_signature: Signature,
+    pub response: TimeSlicedSurveyResponseMessage,
+}
+
+impl ReadXdr for SignedTimeSlicedSurveyResponseMessage {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                response_signature: Signature::read_xdr(r)?,
+                response: TimeSlicedSurveyResponseMessage::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for SignedTimeSlicedSurveyResponseMessage {
     #[cfg(feature = "std")]
     fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
         w.with_limited_depth(|w| {
@@ -23560,6 +25512,7 @@ impl WriteXdr for SignedSurveyResponseMessage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PeerStats {
     pub id: NodeId,
     pub version_str: StringM<100>,
@@ -23641,6 +25594,7 @@ impl WriteXdr for PeerStats {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct PeerStatList(pub VecM<PeerStats, 25>);
 
@@ -23732,6 +25686,242 @@ impl AsRef<[PeerStats]> for PeerStatList {
     }
 }
 
+/// TimeSlicedNodeData is an XDR Struct defines as:
+///
+/// ```text
+/// struct TimeSlicedNodeData
+/// {
+///     uint32 addedAuthenticatedPeers;
+///     uint32 droppedAuthenticatedPeers;
+///     uint32 totalInboundPeerCount;
+///     uint32 totalOutboundPeerCount;
+///
+///     // SCP stats
+///     uint32 p75SCPFirstToSelfLatencyMs;
+///     uint32 p75SCPSelfToOtherLatencyMs;
+///
+///     // How many times the node lost sync in the time slice
+///     uint32 lostSyncCount;
+///
+///     // Config data
+///     bool isValidator;
+///     uint32 maxInboundPeerCount;
+///     uint32 maxOutboundPeerCount;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TimeSlicedNodeData {
+    pub added_authenticated_peers: u32,
+    pub dropped_authenticated_peers: u32,
+    pub total_inbound_peer_count: u32,
+    pub total_outbound_peer_count: u32,
+    pub p75_scp_first_to_self_latency_ms: u32,
+    pub p75_scp_self_to_other_latency_ms: u32,
+    pub lost_sync_count: u32,
+    pub is_validator: bool,
+    pub max_inbound_peer_count: u32,
+    pub max_outbound_peer_count: u32,
+}
+
+impl ReadXdr for TimeSlicedNodeData {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                added_authenticated_peers: u32::read_xdr(r)?,
+                dropped_authenticated_peers: u32::read_xdr(r)?,
+                total_inbound_peer_count: u32::read_xdr(r)?,
+                total_outbound_peer_count: u32::read_xdr(r)?,
+                p75_scp_first_to_self_latency_ms: u32::read_xdr(r)?,
+                p75_scp_self_to_other_latency_ms: u32::read_xdr(r)?,
+                lost_sync_count: u32::read_xdr(r)?,
+                is_validator: bool::read_xdr(r)?,
+                max_inbound_peer_count: u32::read_xdr(r)?,
+                max_outbound_peer_count: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedNodeData {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.added_authenticated_peers.write_xdr(w)?;
+            self.dropped_authenticated_peers.write_xdr(w)?;
+            self.total_inbound_peer_count.write_xdr(w)?;
+            self.total_outbound_peer_count.write_xdr(w)?;
+            self.p75_scp_first_to_self_latency_ms.write_xdr(w)?;
+            self.p75_scp_self_to_other_latency_ms.write_xdr(w)?;
+            self.lost_sync_count.write_xdr(w)?;
+            self.is_validator.write_xdr(w)?;
+            self.max_inbound_peer_count.write_xdr(w)?;
+            self.max_outbound_peer_count.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// TimeSlicedPeerData is an XDR Struct defines as:
+///
+/// ```text
+/// struct TimeSlicedPeerData
+/// {
+///     PeerStats peerStats;
+///     uint32 averageLatencyMs;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TimeSlicedPeerData {
+    pub peer_stats: PeerStats,
+    pub average_latency_ms: u32,
+}
+
+impl ReadXdr for TimeSlicedPeerData {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                peer_stats: PeerStats::read_xdr(r)?,
+                average_latency_ms: u32::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedPeerData {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.peer_stats.write_xdr(w)?;
+            self.average_latency_ms.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// TimeSlicedPeerDataList is an XDR Typedef defines as:
+///
+/// ```text
+/// typedef TimeSlicedPeerData TimeSlicedPeerDataList<25>;
+/// ```
+///
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[derive(Default)]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[derive(Debug)]
+pub struct TimeSlicedPeerDataList(pub VecM<TimeSlicedPeerData, 25>);
+
+impl From<TimeSlicedPeerDataList> for VecM<TimeSlicedPeerData, 25> {
+    #[must_use]
+    fn from(x: TimeSlicedPeerDataList) -> Self {
+        x.0
+    }
+}
+
+impl From<VecM<TimeSlicedPeerData, 25>> for TimeSlicedPeerDataList {
+    #[must_use]
+    fn from(x: VecM<TimeSlicedPeerData, 25>) -> Self {
+        TimeSlicedPeerDataList(x)
+    }
+}
+
+impl AsRef<VecM<TimeSlicedPeerData, 25>> for TimeSlicedPeerDataList {
+    #[must_use]
+    fn as_ref(&self) -> &VecM<TimeSlicedPeerData, 25> {
+        &self.0
+    }
+}
+
+impl ReadXdr for TimeSlicedPeerDataList {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let i = VecM::<TimeSlicedPeerData, 25>::read_xdr(r)?;
+            let v = TimeSlicedPeerDataList(i);
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for TimeSlicedPeerDataList {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| self.0.write_xdr(w))
+    }
+}
+
+impl Deref for TimeSlicedPeerDataList {
+    type Target = VecM<TimeSlicedPeerData, 25>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<TimeSlicedPeerDataList> for Vec<TimeSlicedPeerData> {
+    #[must_use]
+    fn from(x: TimeSlicedPeerDataList) -> Self {
+        x.0 .0
+    }
+}
+
+impl TryFrom<Vec<TimeSlicedPeerData>> for TimeSlicedPeerDataList {
+    type Error = Error;
+    fn try_from(x: Vec<TimeSlicedPeerData>) -> Result<Self> {
+        Ok(TimeSlicedPeerDataList(x.try_into()?))
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TryFrom<&Vec<TimeSlicedPeerData>> for TimeSlicedPeerDataList {
+    type Error = Error;
+    fn try_from(x: &Vec<TimeSlicedPeerData>) -> Result<Self> {
+        Ok(TimeSlicedPeerDataList(x.try_into()?))
+    }
+}
+
+impl AsRef<Vec<TimeSlicedPeerData>> for TimeSlicedPeerDataList {
+    #[must_use]
+    fn as_ref(&self) -> &Vec<TimeSlicedPeerData> {
+        &self.0 .0
+    }
+}
+
+impl AsRef<[TimeSlicedPeerData]> for TimeSlicedPeerDataList {
+    #[cfg(feature = "alloc")]
+    #[must_use]
+    fn as_ref(&self) -> &[TimeSlicedPeerData] {
+        &self.0 .0
+    }
+    #[cfg(not(feature = "alloc"))]
+    #[must_use]
+    fn as_ref(&self) -> &[TimeSlicedPeerData] {
+        self.0 .0
+    }
+}
+
 /// TopologyResponseBodyV0 is an XDR Struct defines as:
 ///
 /// ```text
@@ -23752,6 +25942,7 @@ impl AsRef<[PeerStats]> for PeerStatList {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TopologyResponseBodyV0 {
     pub inbound_peers: PeerStatList,
     pub outbound_peers: PeerStatList,
@@ -23809,6 +26000,7 @@ impl WriteXdr for TopologyResponseBodyV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TopologyResponseBodyV1 {
     pub inbound_peers: PeerStatList,
     pub outbound_peers: PeerStatList,
@@ -23849,6 +26041,56 @@ impl WriteXdr for TopologyResponseBodyV1 {
     }
 }
 
+/// TopologyResponseBodyV2 is an XDR Struct defines as:
+///
+/// ```text
+/// struct TopologyResponseBodyV2
+/// {
+///     TimeSlicedPeerDataList inboundPeers;
+///     TimeSlicedPeerDataList outboundPeers;
+///     TimeSlicedNodeData nodeData;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TopologyResponseBodyV2 {
+    pub inbound_peers: TimeSlicedPeerDataList,
+    pub outbound_peers: TimeSlicedPeerDataList,
+    pub node_data: TimeSlicedNodeData,
+}
+
+impl ReadXdr for TopologyResponseBodyV2 {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                inbound_peers: TimeSlicedPeerDataList::read_xdr(r)?,
+                outbound_peers: TimeSlicedPeerDataList::read_xdr(r)?,
+                node_data: TimeSlicedNodeData::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for TopologyResponseBodyV2 {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.inbound_peers.write_xdr(w)?;
+            self.outbound_peers.write_xdr(w)?;
+            self.node_data.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// SurveyResponseBody is an XDR Union defines as:
 ///
 /// ```text
@@ -23858,6 +26100,8 @@ impl WriteXdr for TopologyResponseBodyV1 {
 ///     TopologyResponseBodyV0 topologyResponseBodyV0;
 /// case SURVEY_TOPOLOGY_RESPONSE_V1:
 ///     TopologyResponseBodyV1 topologyResponseBodyV1;
+/// case SURVEY_TOPOLOGY_RESPONSE_V2:
+///     TopologyResponseBodyV2 topologyResponseBodyV2;
 /// };
 /// ```
 ///
@@ -23869,22 +26113,28 @@ impl WriteXdr for TopologyResponseBodyV1 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum SurveyResponseBody {
     V0(TopologyResponseBodyV0),
     V1(TopologyResponseBodyV1),
+    V2(TopologyResponseBodyV2),
 }
 
 impl SurveyResponseBody {
-    pub const VARIANTS: [SurveyMessageResponseType; 2] =
-        [SurveyMessageResponseType::V0, SurveyMessageResponseType::V1];
-    pub const VARIANTS_STR: [&'static str; 2] = ["V0", "V1"];
+    pub const VARIANTS: [SurveyMessageResponseType; 3] = [
+        SurveyMessageResponseType::V0,
+        SurveyMessageResponseType::V1,
+        SurveyMessageResponseType::V2,
+    ];
+    pub const VARIANTS_STR: [&'static str; 3] = ["V0", "V1", "V2"];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::V0(_) => "V0",
             Self::V1(_) => "V1",
+            Self::V2(_) => "V2",
         }
     }
 
@@ -23894,11 +26144,12 @@ impl SurveyResponseBody {
         match self {
             Self::V0(_) => SurveyMessageResponseType::V0,
             Self::V1(_) => SurveyMessageResponseType::V1,
+            Self::V2(_) => SurveyMessageResponseType::V2,
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [SurveyMessageResponseType; 2] {
+    pub const fn variants() -> [SurveyMessageResponseType; 3] {
         Self::VARIANTS
     }
 }
@@ -23935,6 +26186,7 @@ impl ReadXdr for SurveyResponseBody {
             let v = match dv {
                 SurveyMessageResponseType::V0 => Self::V0(TopologyResponseBodyV0::read_xdr(r)?),
                 SurveyMessageResponseType::V1 => Self::V1(TopologyResponseBodyV1::read_xdr(r)?),
+                SurveyMessageResponseType::V2 => Self::V2(TopologyResponseBodyV2::read_xdr(r)?),
                 #[allow(unreachable_patterns)]
                 _ => return Err(Error::Invalid),
             };
@@ -23952,6 +26204,7 @@ impl WriteXdr for SurveyResponseBody {
             match self {
                 Self::V0(v) => v.write_xdr(w)?,
                 Self::V1(v) => v.write_xdr(w)?,
+                Self::V2(v) => v.write_xdr(w)?,
             };
             Ok(())
         })
@@ -23980,6 +26233,7 @@ pub const TX_ADVERT_VECTOR_MAX_SIZE: u64 = 1000;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct TxAdvertVector(pub VecM<Hash, 1000>);
 
@@ -24087,6 +26341,7 @@ impl AsRef<[Hash]> for TxAdvertVector {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FloodAdvert {
     pub tx_hashes: TxAdvertVector,
 }
@@ -24134,6 +26389,7 @@ pub const TX_DEMAND_VECTOR_MAX_SIZE: u64 = 1000;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct TxDemandVector(pub VecM<Hash, 1000>);
 
@@ -24241,6 +26497,7 @@ impl AsRef<[Hash]> for TxDemandVector {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FloodDemand {
     pub tx_hashes: TxDemandVector,
 }
@@ -24300,6 +26557,20 @@ impl WriteXdr for FloodDemand {
 /// case SURVEY_RESPONSE:
 ///     SignedSurveyResponseMessage signedSurveyResponseMessage;
 ///
+/// case TIME_SLICED_SURVEY_REQUEST:
+///     SignedTimeSlicedSurveyRequestMessage signedTimeSlicedSurveyRequestMessage;
+///
+/// case TIME_SLICED_SURVEY_RESPONSE:
+///     SignedTimeSlicedSurveyResponseMessage signedTimeSlicedSurveyResponseMessage;
+///
+/// case TIME_SLICED_SURVEY_START_COLLECTING:
+///     SignedTimeSlicedSurveyStartCollectingMessage
+///         signedTimeSlicedSurveyStartCollectingMessage;
+///
+/// case TIME_SLICED_SURVEY_STOP_COLLECTING:
+///     SignedTimeSlicedSurveyStopCollectingMessage
+///         signedTimeSlicedSurveyStopCollectingMessage;
+///
 /// // SCP
 /// case GET_SCP_QUORUMSET:
 ///     uint256 qSetHash;
@@ -24329,6 +26600,7 @@ impl WriteXdr for FloodDemand {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum StellarMessage {
     ErrorMsg(SError),
@@ -24343,6 +26615,10 @@ pub enum StellarMessage {
     Transaction(TransactionEnvelope),
     SurveyRequest(SignedSurveyRequestMessage),
     SurveyResponse(SignedSurveyResponseMessage),
+    TimeSlicedSurveyRequest(SignedTimeSlicedSurveyRequestMessage),
+    TimeSlicedSurveyResponse(SignedTimeSlicedSurveyResponseMessage),
+    TimeSlicedSurveyStartCollecting(SignedTimeSlicedSurveyStartCollectingMessage),
+    TimeSlicedSurveyStopCollecting(SignedTimeSlicedSurveyStopCollectingMessage),
     GetScpQuorumset(Uint256),
     ScpQuorumset(ScpQuorumSet),
     ScpMessage(ScpEnvelope),
@@ -24354,7 +26630,7 @@ pub enum StellarMessage {
 }
 
 impl StellarMessage {
-    pub const VARIANTS: [MessageType; 20] = [
+    pub const VARIANTS: [MessageType; 24] = [
         MessageType::ErrorMsg,
         MessageType::Hello,
         MessageType::Auth,
@@ -24367,6 +26643,10 @@ impl StellarMessage {
         MessageType::Transaction,
         MessageType::SurveyRequest,
         MessageType::SurveyResponse,
+        MessageType::TimeSlicedSurveyRequest,
+        MessageType::TimeSlicedSurveyResponse,
+        MessageType::TimeSlicedSurveyStartCollecting,
+        MessageType::TimeSlicedSurveyStopCollecting,
         MessageType::GetScpQuorumset,
         MessageType::ScpQuorumset,
         MessageType::ScpMessage,
@@ -24376,7 +26656,7 @@ impl StellarMessage {
         MessageType::FloodAdvert,
         MessageType::FloodDemand,
     ];
-    pub const VARIANTS_STR: [&'static str; 20] = [
+    pub const VARIANTS_STR: [&'static str; 24] = [
         "ErrorMsg",
         "Hello",
         "Auth",
@@ -24389,6 +26669,10 @@ impl StellarMessage {
         "Transaction",
         "SurveyRequest",
         "SurveyResponse",
+        "TimeSlicedSurveyRequest",
+        "TimeSlicedSurveyResponse",
+        "TimeSlicedSurveyStartCollecting",
+        "TimeSlicedSurveyStopCollecting",
         "GetScpQuorumset",
         "ScpQuorumset",
         "ScpMessage",
@@ -24414,6 +26698,10 @@ impl StellarMessage {
             Self::Transaction(_) => "Transaction",
             Self::SurveyRequest(_) => "SurveyRequest",
             Self::SurveyResponse(_) => "SurveyResponse",
+            Self::TimeSlicedSurveyRequest(_) => "TimeSlicedSurveyRequest",
+            Self::TimeSlicedSurveyResponse(_) => "TimeSlicedSurveyResponse",
+            Self::TimeSlicedSurveyStartCollecting(_) => "TimeSlicedSurveyStartCollecting",
+            Self::TimeSlicedSurveyStopCollecting(_) => "TimeSlicedSurveyStopCollecting",
             Self::GetScpQuorumset(_) => "GetScpQuorumset",
             Self::ScpQuorumset(_) => "ScpQuorumset",
             Self::ScpMessage(_) => "ScpMessage",
@@ -24441,6 +26729,12 @@ impl StellarMessage {
             Self::Transaction(_) => MessageType::Transaction,
             Self::SurveyRequest(_) => MessageType::SurveyRequest,
             Self::SurveyResponse(_) => MessageType::SurveyResponse,
+            Self::TimeSlicedSurveyRequest(_) => MessageType::TimeSlicedSurveyRequest,
+            Self::TimeSlicedSurveyResponse(_) => MessageType::TimeSlicedSurveyResponse,
+            Self::TimeSlicedSurveyStartCollecting(_) => {
+                MessageType::TimeSlicedSurveyStartCollecting
+            }
+            Self::TimeSlicedSurveyStopCollecting(_) => MessageType::TimeSlicedSurveyStopCollecting,
             Self::GetScpQuorumset(_) => MessageType::GetScpQuorumset,
             Self::ScpQuorumset(_) => MessageType::ScpQuorumset,
             Self::ScpMessage(_) => MessageType::ScpMessage,
@@ -24453,7 +26747,7 @@ impl StellarMessage {
     }
 
     #[must_use]
-    pub const fn variants() -> [MessageType; 20] {
+    pub const fn variants() -> [MessageType; 24] {
         Self::VARIANTS
     }
 }
@@ -24505,6 +26799,22 @@ impl ReadXdr for StellarMessage {
                 MessageType::SurveyResponse => {
                     Self::SurveyResponse(SignedSurveyResponseMessage::read_xdr(r)?)
                 }
+                MessageType::TimeSlicedSurveyRequest => Self::TimeSlicedSurveyRequest(
+                    SignedTimeSlicedSurveyRequestMessage::read_xdr(r)?,
+                ),
+                MessageType::TimeSlicedSurveyResponse => Self::TimeSlicedSurveyResponse(
+                    SignedTimeSlicedSurveyResponseMessage::read_xdr(r)?,
+                ),
+                MessageType::TimeSlicedSurveyStartCollecting => {
+                    Self::TimeSlicedSurveyStartCollecting(
+                        SignedTimeSlicedSurveyStartCollectingMessage::read_xdr(r)?,
+                    )
+                }
+                MessageType::TimeSlicedSurveyStopCollecting => {
+                    Self::TimeSlicedSurveyStopCollecting(
+                        SignedTimeSlicedSurveyStopCollectingMessage::read_xdr(r)?,
+                    )
+                }
                 MessageType::GetScpQuorumset => Self::GetScpQuorumset(Uint256::read_xdr(r)?),
                 MessageType::ScpQuorumset => Self::ScpQuorumset(ScpQuorumSet::read_xdr(r)?),
                 MessageType::ScpMessage => Self::ScpMessage(ScpEnvelope::read_xdr(r)?),
@@ -24542,6 +26852,10 @@ impl WriteXdr for StellarMessage {
                 Self::Transaction(v) => v.write_xdr(w)?,
                 Self::SurveyRequest(v) => v.write_xdr(w)?,
                 Self::SurveyResponse(v) => v.write_xdr(w)?,
+                Self::TimeSlicedSurveyRequest(v) => v.write_xdr(w)?,
+                Self::TimeSlicedSurveyResponse(v) => v.write_xdr(w)?,
+                Self::TimeSlicedSurveyStartCollecting(v) => v.write_xdr(w)?,
+                Self::TimeSlicedSurveyStopCollecting(v) => v.write_xdr(w)?,
                 Self::GetScpQuorumset(v) => v.write_xdr(w)?,
                 Self::ScpQuorumset(v) => v.write_xdr(w)?,
                 Self::ScpMessage(v) => v.write_xdr(w)?,
@@ -24574,6 +26888,7 @@ impl WriteXdr for StellarMessage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AuthenticatedMessageV0 {
     pub sequence: u64,
     pub message: StellarMessage,
@@ -24628,6 +26943,7 @@ impl WriteXdr for AuthenticatedMessageV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum AuthenticatedMessage {
     V0(AuthenticatedMessageV0),
@@ -24736,6 +27052,7 @@ pub const MAX_OPS_PER_TX: u64 = 100;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LiquidityPoolParameters {
     LiquidityPoolConstantProduct(LiquidityPoolConstantProductParameters),
@@ -24997,6 +27314,7 @@ impl WriteXdr for MuxedAccount {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DecoratedSignature {
     pub hint: SignatureHint,
     pub signature: Signature,
@@ -25068,6 +27386,7 @@ impl WriteXdr for DecoratedSignature {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum OperationType {
     CreateAccount = 0,
@@ -25303,6 +27622,7 @@ impl WriteXdr for OperationType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CreateAccountOp {
     pub destination: AccountId,
     pub starting_balance: i64,
@@ -25349,6 +27669,7 @@ impl WriteXdr for CreateAccountOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PaymentOp {
     pub destination: MuxedAccount,
     pub asset: Asset,
@@ -25405,6 +27726,7 @@ impl WriteXdr for PaymentOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PathPaymentStrictReceiveOp {
     pub send_asset: Asset,
     pub send_max: i64,
@@ -25470,6 +27792,7 @@ impl WriteXdr for PathPaymentStrictReceiveOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PathPaymentStrictSendOp {
     pub send_asset: Asset,
     pub send_amount: i64,
@@ -25532,6 +27855,7 @@ impl WriteXdr for PathPaymentStrictSendOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManageSellOfferOp {
     pub selling: Asset,
     pub buying: Asset,
@@ -25592,6 +27916,7 @@ impl WriteXdr for ManageSellOfferOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManageBuyOfferOp {
     pub selling: Asset,
     pub buying: Asset,
@@ -25648,6 +27973,7 @@ impl WriteXdr for ManageBuyOfferOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CreatePassiveSellOfferOp {
     pub selling: Asset,
     pub buying: Asset,
@@ -25713,6 +28039,7 @@ impl WriteXdr for CreatePassiveSellOfferOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SetOptionsOp {
     pub inflation_dest: Option<AccountId>,
     pub clear_flags: Option<u32>,
@@ -25791,6 +28118,7 @@ impl WriteXdr for SetOptionsOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ChangeTrustAsset {
     Native,
@@ -25913,6 +28241,7 @@ impl WriteXdr for ChangeTrustAsset {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChangeTrustOp {
     pub line: ChangeTrustAsset,
     pub limit: i64,
@@ -25961,6 +28290,7 @@ impl WriteXdr for ChangeTrustOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AllowTrustOp {
     pub trustor: AccountId,
     pub asset: AssetCode,
@@ -26009,6 +28339,7 @@ impl WriteXdr for AllowTrustOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManageDataOp {
     pub data_name: String64,
     pub data_value: Option<DataValue>,
@@ -26053,6 +28384,7 @@ impl WriteXdr for ManageDataOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BumpSequenceOp {
     pub bump_to: SequenceNumber,
 }
@@ -26096,6 +28428,7 @@ impl WriteXdr for BumpSequenceOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CreateClaimableBalanceOp {
     pub asset: Asset,
     pub amount: i64,
@@ -26143,6 +28476,7 @@ impl WriteXdr for CreateClaimableBalanceOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimClaimableBalanceOp {
     pub balance_id: ClaimableBalanceId,
 }
@@ -26184,6 +28518,7 @@ impl WriteXdr for ClaimClaimableBalanceOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BeginSponsoringFutureReservesOp {
     pub sponsored_id: AccountId,
 }
@@ -26227,6 +28562,7 @@ impl WriteXdr for BeginSponsoringFutureReservesOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum RevokeSponsorshipType {
     LedgerEntry = 0,
@@ -26334,6 +28670,7 @@ impl WriteXdr for RevokeSponsorshipType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RevokeSponsorshipOpSigner {
     pub account_id: AccountId,
     pub signer_key: SignerKey,
@@ -26386,6 +28723,7 @@ impl WriteXdr for RevokeSponsorshipOpSigner {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum RevokeSponsorshipOp {
     LedgerEntry(LedgerKey),
@@ -26496,6 +28834,7 @@ impl WriteXdr for RevokeSponsorshipOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClawbackOp {
     pub asset: Asset,
     pub from: MuxedAccount,
@@ -26543,6 +28882,7 @@ impl WriteXdr for ClawbackOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClawbackClaimableBalanceOp {
     pub balance_id: ClaimableBalanceId,
 }
@@ -26588,6 +28928,7 @@ impl WriteXdr for ClawbackClaimableBalanceOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SetTrustLineFlagsOp {
     pub trustor: AccountId,
     pub asset: Asset,
@@ -26650,6 +28991,7 @@ pub const LIQUIDITY_POOL_FEE_V18: u64 = 30;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LiquidityPoolDepositOp {
     pub liquidity_pool_id: PoolId,
     pub max_amount_a: i64,
@@ -26706,6 +29048,7 @@ impl WriteXdr for LiquidityPoolDepositOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LiquidityPoolWithdrawOp {
     pub liquidity_pool_id: PoolId,
     pub amount: i64,
@@ -26747,7 +29090,8 @@ impl WriteXdr for LiquidityPoolWithdrawOp {
 /// {
 ///     HOST_FUNCTION_TYPE_INVOKE_CONTRACT = 0,
 ///     HOST_FUNCTION_TYPE_CREATE_CONTRACT = 1,
-///     HOST_FUNCTION_TYPE_UPLOAD_CONTRACT_WASM = 2
+///     HOST_FUNCTION_TYPE_UPLOAD_CONTRACT_WASM = 2,
+///     HOST_FUNCTION_TYPE_CREATE_CONTRACT_V2 = 3
 /// };
 /// ```
 ///
@@ -26759,21 +29103,28 @@ impl WriteXdr for LiquidityPoolWithdrawOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum HostFunctionType {
     InvokeContract = 0,
     CreateContract = 1,
     UploadContractWasm = 2,
+    CreateContractV2 = 3,
 }
 
 impl HostFunctionType {
-    pub const VARIANTS: [HostFunctionType; 3] = [
+    pub const VARIANTS: [HostFunctionType; 4] = [
         HostFunctionType::InvokeContract,
         HostFunctionType::CreateContract,
         HostFunctionType::UploadContractWasm,
+        HostFunctionType::CreateContractV2,
     ];
-    pub const VARIANTS_STR: [&'static str; 3] =
-        ["InvokeContract", "CreateContract", "UploadContractWasm"];
+    pub const VARIANTS_STR: [&'static str; 4] = [
+        "InvokeContract",
+        "CreateContract",
+        "UploadContractWasm",
+        "CreateContractV2",
+    ];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
@@ -26781,11 +29132,12 @@ impl HostFunctionType {
             Self::InvokeContract => "InvokeContract",
             Self::CreateContract => "CreateContract",
             Self::UploadContractWasm => "UploadContractWasm",
+            Self::CreateContractV2 => "CreateContractV2",
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [HostFunctionType; 3] {
+    pub const fn variants() -> [HostFunctionType; 4] {
         Self::VARIANTS
     }
 }
@@ -26819,6 +29171,7 @@ impl TryFrom<i32> for HostFunctionType {
             0 => HostFunctionType::InvokeContract,
             1 => HostFunctionType::CreateContract,
             2 => HostFunctionType::UploadContractWasm,
+            3 => HostFunctionType::CreateContractV2,
             #[allow(unreachable_patterns)]
             _ => return Err(Error::Invalid),
         };
@@ -26872,6 +29225,7 @@ impl WriteXdr for HostFunctionType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ContractIdPreimageType {
     Address = 0,
@@ -26979,6 +29333,7 @@ impl WriteXdr for ContractIdPreimageType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContractIdPreimageFromAddress {
     pub address: ScAddress,
     pub salt: Uint256,
@@ -27031,6 +29386,7 @@ impl WriteXdr for ContractIdPreimageFromAddress {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ContractIdPreimage {
     Address(ContractIdPreimageFromAddress),
@@ -27140,6 +29496,7 @@ impl WriteXdr for ContractIdPreimage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CreateContractArgs {
     pub contract_id_preimage: ContractIdPreimage,
     pub executable: ContractExecutable,
@@ -27168,6 +29525,57 @@ impl WriteXdr for CreateContractArgs {
     }
 }
 
+/// CreateContractArgsV2 is an XDR Struct defines as:
+///
+/// ```text
+/// struct CreateContractArgsV2
+/// {
+///     ContractIDPreimage contractIDPreimage;
+///     ContractExecutable executable;
+///     // Arguments of the contract's constructor.
+///     SCVal constructorArgs<>;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct CreateContractArgsV2 {
+    pub contract_id_preimage: ContractIdPreimage,
+    pub executable: ContractExecutable,
+    pub constructor_args: VecM<ScVal>,
+}
+
+impl ReadXdr for CreateContractArgsV2 {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                contract_id_preimage: ContractIdPreimage::read_xdr(r)?,
+                executable: ContractExecutable::read_xdr(r)?,
+                constructor_args: VecM::<ScVal>::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for CreateContractArgsV2 {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.contract_id_preimage.write_xdr(w)?;
+            self.executable.write_xdr(w)?;
+            self.constructor_args.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 /// InvokeContractArgs is an XDR Struct defines as:
 ///
 /// ```text
@@ -27185,6 +29593,7 @@ impl WriteXdr for CreateContractArgs {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InvokeContractArgs {
     pub contract_address: ScAddress,
     pub function_name: ScSymbol,
@@ -27227,6 +29636,8 @@ impl WriteXdr for InvokeContractArgs {
 ///     CreateContractArgs createContract;
 /// case HOST_FUNCTION_TYPE_UPLOAD_CONTRACT_WASM:
 ///     opaque wasm<>;
+/// case HOST_FUNCTION_TYPE_CREATE_CONTRACT_V2:
+///     CreateContractArgsV2 createContractV2;
 /// };
 /// ```
 ///
@@ -27238,21 +29649,28 @@ impl WriteXdr for InvokeContractArgs {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum HostFunction {
     InvokeContract(InvokeContractArgs),
     CreateContract(CreateContractArgs),
     UploadContractWasm(BytesM),
+    CreateContractV2(CreateContractArgsV2),
 }
 
 impl HostFunction {
-    pub const VARIANTS: [HostFunctionType; 3] = [
+    pub const VARIANTS: [HostFunctionType; 4] = [
         HostFunctionType::InvokeContract,
         HostFunctionType::CreateContract,
         HostFunctionType::UploadContractWasm,
+        HostFunctionType::CreateContractV2,
     ];
-    pub const VARIANTS_STR: [&'static str; 3] =
-        ["InvokeContract", "CreateContract", "UploadContractWasm"];
+    pub const VARIANTS_STR: [&'static str; 4] = [
+        "InvokeContract",
+        "CreateContract",
+        "UploadContractWasm",
+        "CreateContractV2",
+    ];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
@@ -27260,6 +29678,7 @@ impl HostFunction {
             Self::InvokeContract(_) => "InvokeContract",
             Self::CreateContract(_) => "CreateContract",
             Self::UploadContractWasm(_) => "UploadContractWasm",
+            Self::CreateContractV2(_) => "CreateContractV2",
         }
     }
 
@@ -27270,11 +29689,12 @@ impl HostFunction {
             Self::InvokeContract(_) => HostFunctionType::InvokeContract,
             Self::CreateContract(_) => HostFunctionType::CreateContract,
             Self::UploadContractWasm(_) => HostFunctionType::UploadContractWasm,
+            Self::CreateContractV2(_) => HostFunctionType::CreateContractV2,
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [HostFunctionType; 3] {
+    pub const fn variants() -> [HostFunctionType; 4] {
         Self::VARIANTS
     }
 }
@@ -27317,6 +29737,9 @@ impl ReadXdr for HostFunction {
                 HostFunctionType::UploadContractWasm => {
                     Self::UploadContractWasm(BytesM::read_xdr(r)?)
                 }
+                HostFunctionType::CreateContractV2 => {
+                    Self::CreateContractV2(CreateContractArgsV2::read_xdr(r)?)
+                }
                 #[allow(unreachable_patterns)]
                 _ => return Err(Error::Invalid),
             };
@@ -27335,6 +29758,7 @@ impl WriteXdr for HostFunction {
                 Self::InvokeContract(v) => v.write_xdr(w)?,
                 Self::CreateContract(v) => v.write_xdr(w)?,
                 Self::UploadContractWasm(v) => v.write_xdr(w)?,
+                Self::CreateContractV2(v) => v.write_xdr(w)?,
             };
             Ok(())
         })
@@ -27347,7 +29771,8 @@ impl WriteXdr for HostFunction {
 /// enum SorobanAuthorizedFunctionType
 /// {
 ///     SOROBAN_AUTHORIZED_FUNCTION_TYPE_CONTRACT_FN = 0,
-///     SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_HOST_FN = 1
+///     SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_HOST_FN = 1,
+///     SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_V2_HOST_FN = 2
 /// };
 /// ```
 ///
@@ -27359,29 +29784,37 @@ impl WriteXdr for HostFunction {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SorobanAuthorizedFunctionType {
     ContractFn = 0,
     CreateContractHostFn = 1,
+    CreateContractV2HostFn = 2,
 }
 
 impl SorobanAuthorizedFunctionType {
-    pub const VARIANTS: [SorobanAuthorizedFunctionType; 2] = [
+    pub const VARIANTS: [SorobanAuthorizedFunctionType; 3] = [
         SorobanAuthorizedFunctionType::ContractFn,
         SorobanAuthorizedFunctionType::CreateContractHostFn,
+        SorobanAuthorizedFunctionType::CreateContractV2HostFn,
     ];
-    pub const VARIANTS_STR: [&'static str; 2] = ["ContractFn", "CreateContractHostFn"];
+    pub const VARIANTS_STR: [&'static str; 3] = [
+        "ContractFn",
+        "CreateContractHostFn",
+        "CreateContractV2HostFn",
+    ];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::ContractFn => "ContractFn",
             Self::CreateContractHostFn => "CreateContractHostFn",
+            Self::CreateContractV2HostFn => "CreateContractV2HostFn",
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [SorobanAuthorizedFunctionType; 2] {
+    pub const fn variants() -> [SorobanAuthorizedFunctionType; 3] {
         Self::VARIANTS
     }
 }
@@ -27414,6 +29847,7 @@ impl TryFrom<i32> for SorobanAuthorizedFunctionType {
         let e = match i {
             0 => SorobanAuthorizedFunctionType::ContractFn,
             1 => SorobanAuthorizedFunctionType::CreateContractHostFn,
+            2 => SorobanAuthorizedFunctionType::CreateContractV2HostFn,
             #[allow(unreachable_patterns)]
             _ => return Err(Error::Invalid),
         };
@@ -27456,8 +29890,14 @@ impl WriteXdr for SorobanAuthorizedFunctionType {
 /// {
 /// case SOROBAN_AUTHORIZED_FUNCTION_TYPE_CONTRACT_FN:
 ///     InvokeContractArgs contractFn;
+/// // This variant of auth payload for creating new contract instances is no
+/// // longer accepted after protocol 22.
 /// case SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_HOST_FN:
 ///     CreateContractArgs createContractHostFn;
+/// // This variant of auth payload for creating new contract instances
+/// // is only accepted in and after protocol 22.
+/// case SOROBAN_AUTHORIZED_FUNCTION_TYPE_CREATE_CONTRACT_V2_HOST_FN:
+///     CreateContractArgsV2 createContractV2HostFn;
 /// };
 /// ```
 ///
@@ -27469,24 +29909,32 @@ impl WriteXdr for SorobanAuthorizedFunctionType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum SorobanAuthorizedFunction {
     ContractFn(InvokeContractArgs),
     CreateContractHostFn(CreateContractArgs),
+    CreateContractV2HostFn(CreateContractArgsV2),
 }
 
 impl SorobanAuthorizedFunction {
-    pub const VARIANTS: [SorobanAuthorizedFunctionType; 2] = [
+    pub const VARIANTS: [SorobanAuthorizedFunctionType; 3] = [
         SorobanAuthorizedFunctionType::ContractFn,
         SorobanAuthorizedFunctionType::CreateContractHostFn,
+        SorobanAuthorizedFunctionType::CreateContractV2HostFn,
     ];
-    pub const VARIANTS_STR: [&'static str; 2] = ["ContractFn", "CreateContractHostFn"];
+    pub const VARIANTS_STR: [&'static str; 3] = [
+        "ContractFn",
+        "CreateContractHostFn",
+        "CreateContractV2HostFn",
+    ];
 
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::ContractFn(_) => "ContractFn",
             Self::CreateContractHostFn(_) => "CreateContractHostFn",
+            Self::CreateContractV2HostFn(_) => "CreateContractV2HostFn",
         }
     }
 
@@ -27496,11 +29944,14 @@ impl SorobanAuthorizedFunction {
         match self {
             Self::ContractFn(_) => SorobanAuthorizedFunctionType::ContractFn,
             Self::CreateContractHostFn(_) => SorobanAuthorizedFunctionType::CreateContractHostFn,
+            Self::CreateContractV2HostFn(_) => {
+                SorobanAuthorizedFunctionType::CreateContractV2HostFn
+            }
         }
     }
 
     #[must_use]
-    pub const fn variants() -> [SorobanAuthorizedFunctionType; 2] {
+    pub const fn variants() -> [SorobanAuthorizedFunctionType; 3] {
         Self::VARIANTS
     }
 }
@@ -27541,6 +29992,9 @@ impl ReadXdr for SorobanAuthorizedFunction {
                 SorobanAuthorizedFunctionType::CreateContractHostFn => {
                     Self::CreateContractHostFn(CreateContractArgs::read_xdr(r)?)
                 }
+                SorobanAuthorizedFunctionType::CreateContractV2HostFn => {
+                    Self::CreateContractV2HostFn(CreateContractArgsV2::read_xdr(r)?)
+                }
                 #[allow(unreachable_patterns)]
                 _ => return Err(Error::Invalid),
             };
@@ -27558,6 +30012,7 @@ impl WriteXdr for SorobanAuthorizedFunction {
             match self {
                 Self::ContractFn(v) => v.write_xdr(w)?,
                 Self::CreateContractHostFn(v) => v.write_xdr(w)?,
+                Self::CreateContractV2HostFn(v) => v.write_xdr(w)?,
             };
             Ok(())
         })
@@ -27581,6 +30036,7 @@ impl WriteXdr for SorobanAuthorizedFunction {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanAuthorizedInvocation {
     pub function: SorobanAuthorizedFunction,
     pub sub_invocations: VecM<SorobanAuthorizedInvocation>,
@@ -27628,6 +30084,7 @@ impl WriteXdr for SorobanAuthorizedInvocation {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanAddressCredentials {
     pub address: ScAddress,
     pub nonce: i64,
@@ -27680,6 +30137,7 @@ impl WriteXdr for SorobanAddressCredentials {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SorobanCredentialsType {
     SourceAccount = 0,
@@ -27790,6 +30248,7 @@ impl WriteXdr for SorobanCredentialsType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum SorobanCredentials {
     SourceAccount,
@@ -27899,6 +30358,7 @@ impl WriteXdr for SorobanCredentials {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanAuthorizationEntry {
     pub credentials: SorobanCredentials,
     pub root_invocation: SorobanAuthorizedInvocation,
@@ -27946,6 +30406,7 @@ impl WriteXdr for SorobanAuthorizationEntry {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InvokeHostFunctionOp {
     pub host_function: HostFunction,
     pub auth: VecM<SorobanAuthorizationEntry>,
@@ -27991,6 +30452,7 @@ impl WriteXdr for InvokeHostFunctionOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ExtendFootprintTtlOp {
     pub ext: ExtensionPoint,
     pub extend_to: u32,
@@ -28035,6 +30497,7 @@ impl WriteXdr for ExtendFootprintTtlOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RestoreFootprintOp {
     pub ext: ExtensionPoint,
 }
@@ -28130,6 +30593,7 @@ impl WriteXdr for RestoreFootprintOp {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum OperationBody {
     CreateAccount(CreateAccountOp),
@@ -28510,6 +30974,7 @@ impl WriteXdr for OperationBody {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Operation {
     pub source_account: Option<MuxedAccount>,
     pub body: OperationBody,
@@ -28556,6 +31021,7 @@ impl WriteXdr for Operation {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct HashIdPreimageOperationId {
     pub source_account: AccountId,
     pub seq_num: SequenceNumber,
@@ -28607,6 +31073,7 @@ impl WriteXdr for HashIdPreimageOperationId {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct HashIdPreimageRevokeId {
     pub source_account: AccountId,
     pub seq_num: SequenceNumber,
@@ -28661,6 +31128,7 @@ impl WriteXdr for HashIdPreimageRevokeId {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct HashIdPreimageContractId {
     pub network_id: Hash,
     pub contract_id_preimage: ContractIdPreimage,
@@ -28708,6 +31176,7 @@ impl WriteXdr for HashIdPreimageContractId {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct HashIdPreimageSorobanAuthorization {
     pub network_id: Hash,
     pub nonce: i64,
@@ -28788,6 +31257,7 @@ impl WriteXdr for HashIdPreimageSorobanAuthorization {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum HashIdPreimage {
     OpId(HashIdPreimageOperationId),
@@ -28922,6 +31392,7 @@ impl WriteXdr for HashIdPreimage {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum MemoType {
     None = 0,
@@ -29050,6 +31521,7 @@ impl WriteXdr for MemoType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum Memo {
     None,
@@ -29175,6 +31647,7 @@ impl WriteXdr for Memo {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TimeBounds {
     pub min_time: TimePoint,
     pub max_time: TimePoint,
@@ -29220,6 +31693,7 @@ impl WriteXdr for TimeBounds {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerBounds {
     pub min_ledger: u32,
     pub max_ledger: u32,
@@ -29292,6 +31766,7 @@ impl WriteXdr for LedgerBounds {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PreconditionsV2 {
     pub time_bounds: Option<TimeBounds>,
     pub ledger_bounds: Option<LedgerBounds>,
@@ -29351,6 +31826,7 @@ impl WriteXdr for PreconditionsV2 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum PreconditionType {
     None = 0,
@@ -29467,6 +31943,7 @@ impl WriteXdr for PreconditionType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum Preconditions {
     None,
@@ -29580,6 +32057,7 @@ impl WriteXdr for Preconditions {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LedgerFootprint {
     pub read_only: VecM<LedgerKey>,
     pub read_write: VecM<LedgerKey>,
@@ -29603,6 +32081,544 @@ impl WriteXdr for LedgerFootprint {
         w.with_limited_depth(|w| {
             self.read_only.write_xdr(w)?;
             self.read_write.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ArchivalProofType is an XDR Enum defines as:
+///
+/// ```text
+/// enum ArchivalProofType
+/// {
+///     EXISTENCE = 0,
+///     NONEXISTENCE = 1
+/// };
+/// ```
+///
+// enum
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[repr(i32)]
+pub enum ArchivalProofType {
+    Existence = 0,
+    Nonexistence = 1,
+}
+
+impl ArchivalProofType {
+    pub const VARIANTS: [ArchivalProofType; 2] = [
+        ArchivalProofType::Existence,
+        ArchivalProofType::Nonexistence,
+    ];
+    pub const VARIANTS_STR: [&'static str; 2] = ["Existence", "Nonexistence"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Existence => "Existence",
+            Self::Nonexistence => "Nonexistence",
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [ArchivalProofType; 2] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for ArchivalProofType {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Variants<ArchivalProofType> for ArchivalProofType {
+    fn variants() -> slice::Iter<'static, ArchivalProofType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Enum for ArchivalProofType {}
+
+impl fmt::Display for ArchivalProofType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl TryFrom<i32> for ArchivalProofType {
+    type Error = Error;
+
+    fn try_from(i: i32) -> Result<Self> {
+        let e = match i {
+            0 => ArchivalProofType::Existence,
+            1 => ArchivalProofType::Nonexistence,
+            #[allow(unreachable_patterns)]
+            _ => return Err(Error::Invalid),
+        };
+        Ok(e)
+    }
+}
+
+impl From<ArchivalProofType> for i32 {
+    #[must_use]
+    fn from(e: ArchivalProofType) -> Self {
+        e as Self
+    }
+}
+
+impl ReadXdr for ArchivalProofType {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let e = i32::read_xdr(r)?;
+            let v: Self = e.try_into()?;
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for ArchivalProofType {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            let i: i32 = (*self).into();
+            i.write_xdr(w)
+        })
+    }
+}
+
+/// ArchivalProofNode is an XDR Struct defines as:
+///
+/// ```text
+/// struct ArchivalProofNode
+/// {
+///     uint32 index;
+///     Hash hash;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ArchivalProofNode {
+    pub index: u32,
+    pub hash: Hash,
+}
+
+impl ReadXdr for ArchivalProofNode {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                index: u32::read_xdr(r)?,
+                hash: Hash::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ArchivalProofNode {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.index.write_xdr(w)?;
+            self.hash.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ProofLevel is an XDR Typedef defines as:
+///
+/// ```text
+/// typedef ArchivalProofNode ProofLevel<>;
+/// ```
+///
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[derive(Default)]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[derive(Debug)]
+pub struct ProofLevel(pub VecM<ArchivalProofNode>);
+
+impl From<ProofLevel> for VecM<ArchivalProofNode> {
+    #[must_use]
+    fn from(x: ProofLevel) -> Self {
+        x.0
+    }
+}
+
+impl From<VecM<ArchivalProofNode>> for ProofLevel {
+    #[must_use]
+    fn from(x: VecM<ArchivalProofNode>) -> Self {
+        ProofLevel(x)
+    }
+}
+
+impl AsRef<VecM<ArchivalProofNode>> for ProofLevel {
+    #[must_use]
+    fn as_ref(&self) -> &VecM<ArchivalProofNode> {
+        &self.0
+    }
+}
+
+impl ReadXdr for ProofLevel {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let i = VecM::<ArchivalProofNode>::read_xdr(r)?;
+            let v = ProofLevel(i);
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for ProofLevel {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| self.0.write_xdr(w))
+    }
+}
+
+impl Deref for ProofLevel {
+    type Target = VecM<ArchivalProofNode>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<ProofLevel> for Vec<ArchivalProofNode> {
+    #[must_use]
+    fn from(x: ProofLevel) -> Self {
+        x.0 .0
+    }
+}
+
+impl TryFrom<Vec<ArchivalProofNode>> for ProofLevel {
+    type Error = Error;
+    fn try_from(x: Vec<ArchivalProofNode>) -> Result<Self> {
+        Ok(ProofLevel(x.try_into()?))
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TryFrom<&Vec<ArchivalProofNode>> for ProofLevel {
+    type Error = Error;
+    fn try_from(x: &Vec<ArchivalProofNode>) -> Result<Self> {
+        Ok(ProofLevel(x.try_into()?))
+    }
+}
+
+impl AsRef<Vec<ArchivalProofNode>> for ProofLevel {
+    #[must_use]
+    fn as_ref(&self) -> &Vec<ArchivalProofNode> {
+        &self.0 .0
+    }
+}
+
+impl AsRef<[ArchivalProofNode]> for ProofLevel {
+    #[cfg(feature = "alloc")]
+    #[must_use]
+    fn as_ref(&self) -> &[ArchivalProofNode] {
+        &self.0 .0
+    }
+    #[cfg(not(feature = "alloc"))]
+    #[must_use]
+    fn as_ref(&self) -> &[ArchivalProofNode] {
+        self.0 .0
+    }
+}
+
+/// NonexistenceProofBody is an XDR Struct defines as:
+///
+/// ```text
+/// struct NonexistenceProofBody
+/// {
+///     ColdArchiveBucketEntry entriesToProve<>;
+///
+///     // Vector of vectors, where proofLevels[level]
+///     // contains all HashNodes that correspond with that level
+///     ProofLevel proofLevels<>;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct NonexistenceProofBody {
+    pub entries_to_prove: VecM<ColdArchiveBucketEntry>,
+    pub proof_levels: VecM<ProofLevel>,
+}
+
+impl ReadXdr for NonexistenceProofBody {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                entries_to_prove: VecM::<ColdArchiveBucketEntry>::read_xdr(r)?,
+                proof_levels: VecM::<ProofLevel>::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for NonexistenceProofBody {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.entries_to_prove.write_xdr(w)?;
+            self.proof_levels.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ExistenceProofBody is an XDR Struct defines as:
+///
+/// ```text
+/// struct ExistenceProofBody
+/// {
+///     LedgerKey keysToProve<>;
+///
+///     // Bounds for each key being proved, where bound[n]
+///     // corresponds to keysToProve[n]
+///     ColdArchiveBucketEntry lowBoundEntries<>;
+///     ColdArchiveBucketEntry highBoundEntries<>;
+///
+///     // Vector of vectors, where proofLevels[level]
+///     // contains all HashNodes that correspond with that level
+///     ProofLevel proofLevels<>;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ExistenceProofBody {
+    pub keys_to_prove: VecM<LedgerKey>,
+    pub low_bound_entries: VecM<ColdArchiveBucketEntry>,
+    pub high_bound_entries: VecM<ColdArchiveBucketEntry>,
+    pub proof_levels: VecM<ProofLevel>,
+}
+
+impl ReadXdr for ExistenceProofBody {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                keys_to_prove: VecM::<LedgerKey>::read_xdr(r)?,
+                low_bound_entries: VecM::<ColdArchiveBucketEntry>::read_xdr(r)?,
+                high_bound_entries: VecM::<ColdArchiveBucketEntry>::read_xdr(r)?,
+                proof_levels: VecM::<ProofLevel>::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ExistenceProofBody {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.keys_to_prove.write_xdr(w)?;
+            self.low_bound_entries.write_xdr(w)?;
+            self.high_bound_entries.write_xdr(w)?;
+            self.proof_levels.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// ArchivalProofBody is an XDR NestedUnion defines as:
+///
+/// ```text
+/// union switch (ArchivalProofType t)
+///     {
+///     case EXISTENCE:
+///         NonexistenceProofBody nonexistenceProof;
+///     case NONEXISTENCE:
+///         ExistenceProofBody existenceProof;
+///     }
+/// ```
+///
+// union with discriminant ArchivalProofType
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[allow(clippy::large_enum_variant)]
+pub enum ArchivalProofBody {
+    Existence(NonexistenceProofBody),
+    Nonexistence(ExistenceProofBody),
+}
+
+impl ArchivalProofBody {
+    pub const VARIANTS: [ArchivalProofType; 2] = [
+        ArchivalProofType::Existence,
+        ArchivalProofType::Nonexistence,
+    ];
+    pub const VARIANTS_STR: [&'static str; 2] = ["Existence", "Nonexistence"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Existence(_) => "Existence",
+            Self::Nonexistence(_) => "Nonexistence",
+        }
+    }
+
+    #[must_use]
+    pub const fn discriminant(&self) -> ArchivalProofType {
+        #[allow(clippy::match_same_arms)]
+        match self {
+            Self::Existence(_) => ArchivalProofType::Existence,
+            Self::Nonexistence(_) => ArchivalProofType::Nonexistence,
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [ArchivalProofType; 2] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for ArchivalProofBody {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Discriminant<ArchivalProofType> for ArchivalProofBody {
+    #[must_use]
+    fn discriminant(&self) -> ArchivalProofType {
+        Self::discriminant(self)
+    }
+}
+
+impl Variants<ArchivalProofType> for ArchivalProofBody {
+    fn variants() -> slice::Iter<'static, ArchivalProofType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Union<ArchivalProofType> for ArchivalProofBody {}
+
+impl ReadXdr for ArchivalProofBody {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let dv: ArchivalProofType = <ArchivalProofType as ReadXdr>::read_xdr(r)?;
+            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+            let v = match dv {
+                ArchivalProofType::Existence => {
+                    Self::Existence(NonexistenceProofBody::read_xdr(r)?)
+                }
+                ArchivalProofType::Nonexistence => {
+                    Self::Nonexistence(ExistenceProofBody::read_xdr(r)?)
+                }
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::Invalid),
+            };
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for ArchivalProofBody {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.discriminant().write_xdr(w)?;
+            #[allow(clippy::match_same_arms)]
+            match self {
+                Self::Existence(v) => v.write_xdr(w)?,
+                Self::Nonexistence(v) => v.write_xdr(w)?,
+            };
+            Ok(())
+        })
+    }
+}
+
+/// ArchivalProof is an XDR Struct defines as:
+///
+/// ```text
+/// struct ArchivalProof
+/// {
+///     uint32 epoch; // AST Subtree for this proof
+///
+///     union switch (ArchivalProofType t)
+///     {
+///     case EXISTENCE:
+///         NonexistenceProofBody nonexistenceProof;
+///     case NONEXISTENCE:
+///         ExistenceProofBody existenceProof;
+///     } body;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ArchivalProof {
+    pub epoch: u32,
+    pub body: ArchivalProofBody,
+}
+
+impl ReadXdr for ArchivalProof {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                epoch: u32::read_xdr(r)?,
+                body: ArchivalProofBody::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ArchivalProof {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.epoch.write_xdr(w)?;
+            self.body.write_xdr(w)?;
             Ok(())
         })
     }
@@ -29632,6 +32648,7 @@ impl WriteXdr for LedgerFootprint {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanResources {
     pub footprint: LedgerFootprint,
     pub instructions: u32,
@@ -29666,12 +32683,126 @@ impl WriteXdr for SorobanResources {
     }
 }
 
+/// SorobanTransactionDataExt is an XDR NestedUnion defines as:
+///
+/// ```text
+/// union switch (int v)
+///     {
+///     case 0:
+///         void;
+///     case 1:
+///         ArchivalProof proofs<>;
+///     }
+/// ```
+///
+// union with discriminant i32
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[allow(clippy::large_enum_variant)]
+pub enum SorobanTransactionDataExt {
+    V0,
+    V1(VecM<ArchivalProof>),
+}
+
+impl SorobanTransactionDataExt {
+    pub const VARIANTS: [i32; 2] = [0, 1];
+    pub const VARIANTS_STR: [&'static str; 2] = ["V0", "V1"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::V0 => "V0",
+            Self::V1(_) => "V1",
+        }
+    }
+
+    #[must_use]
+    pub const fn discriminant(&self) -> i32 {
+        #[allow(clippy::match_same_arms)]
+        match self {
+            Self::V0 => 0,
+            Self::V1(_) => 1,
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [i32; 2] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for SorobanTransactionDataExt {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Discriminant<i32> for SorobanTransactionDataExt {
+    #[must_use]
+    fn discriminant(&self) -> i32 {
+        Self::discriminant(self)
+    }
+}
+
+impl Variants<i32> for SorobanTransactionDataExt {
+    fn variants() -> slice::Iter<'static, i32> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Union<i32> for SorobanTransactionDataExt {}
+
+impl ReadXdr for SorobanTransactionDataExt {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let dv: i32 = <i32 as ReadXdr>::read_xdr(r)?;
+            #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+            let v = match dv {
+                0 => Self::V0,
+                1 => Self::V1(VecM::<ArchivalProof>::read_xdr(r)?),
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::Invalid),
+            };
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for SorobanTransactionDataExt {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.discriminant().write_xdr(w)?;
+            #[allow(clippy::match_same_arms)]
+            match self {
+                Self::V0 => ().write_xdr(w)?,
+                Self::V1(v) => v.write_xdr(w)?,
+            };
+            Ok(())
+        })
+    }
+}
+
 /// SorobanTransactionData is an XDR Struct defines as:
 ///
 /// ```text
 /// struct SorobanTransactionData
 /// {
-///     ExtensionPoint ext;
+///     union switch (int v)
+///     {
+///     case 0:
+///         void;
+///     case 1:
+///         ArchivalProof proofs<>;
+///     } ext;
 ///     SorobanResources resources;
 ///     // Amount of the transaction `fee` allocated to the Soroban resource fees.
 ///     // The fraction of `resourceFee` corresponding to `resources` specified
@@ -29693,8 +32824,9 @@ impl WriteXdr for SorobanResources {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SorobanTransactionData {
-    pub ext: ExtensionPoint,
+    pub ext: SorobanTransactionDataExt,
     pub resources: SorobanResources,
     pub resource_fee: i64,
 }
@@ -29704,7 +32836,7 @@ impl ReadXdr for SorobanTransactionData {
     fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
         r.with_limited_depth(|r| {
             Ok(Self {
-                ext: ExtensionPoint::read_xdr(r)?,
+                ext: SorobanTransactionDataExt::read_xdr(r)?,
                 resources: SorobanResources::read_xdr(r)?,
                 resource_fee: i64::read_xdr(r)?,
             })
@@ -29742,6 +32874,7 @@ impl WriteXdr for SorobanTransactionData {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionV0Ext {
     V0,
@@ -29851,6 +32984,7 @@ impl WriteXdr for TransactionV0Ext {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionV0 {
     pub source_account_ed25519: Uint256,
     pub fee: u32,
@@ -29913,6 +33047,7 @@ impl WriteXdr for TransactionV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionV0Envelope {
     pub tx: TransactionV0,
     pub signatures: VecM<DecoratedSignature, 20>,
@@ -29961,6 +33096,7 @@ impl WriteXdr for TransactionV0Envelope {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionExt {
     V0,
@@ -30088,6 +33224,7 @@ impl WriteXdr for TransactionExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Transaction {
     pub source_account: MuxedAccount,
     pub fee: u32,
@@ -30150,6 +33287,7 @@ impl WriteXdr for Transaction {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionV1Envelope {
     pub tx: Transaction,
     pub signatures: VecM<DecoratedSignature, 20>,
@@ -30196,6 +33334,7 @@ impl WriteXdr for TransactionV1Envelope {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum FeeBumpTransactionInnerTx {
     Tx(TransactionV1Envelope),
@@ -30296,6 +33435,7 @@ impl WriteXdr for FeeBumpTransactionInnerTx {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum FeeBumpTransactionExt {
     V0,
@@ -30407,6 +33547,7 @@ impl WriteXdr for FeeBumpTransactionExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FeeBumpTransaction {
     pub fee_source: MuxedAccount,
     pub fee: i64,
@@ -30460,6 +33601,7 @@ impl WriteXdr for FeeBumpTransaction {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FeeBumpTransactionEnvelope {
     pub tx: FeeBumpTransaction,
     pub signatures: VecM<DecoratedSignature, 20>,
@@ -30510,6 +33652,7 @@ impl WriteXdr for FeeBumpTransactionEnvelope {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionEnvelope {
     TxV0(TransactionV0Envelope),
@@ -30629,6 +33772,7 @@ impl WriteXdr for TransactionEnvelope {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionSignaturePayloadTaggedTransaction {
     Tx(Transaction),
@@ -30741,6 +33885,7 @@ impl WriteXdr for TransactionSignaturePayloadTaggedTransaction {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionSignaturePayload {
     pub network_id: Hash,
     pub tagged_transaction: TransactionSignaturePayloadTaggedTransaction,
@@ -30788,6 +33933,7 @@ impl WriteXdr for TransactionSignaturePayload {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClaimAtomType {
     V0 = 0,
@@ -30908,6 +34054,7 @@ impl WriteXdr for ClaimAtomType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimOfferAtomV0 {
     pub seller_ed25519: Uint256,
     pub offer_id: i64,
@@ -30974,6 +34121,7 @@ impl WriteXdr for ClaimOfferAtomV0 {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimOfferAtom {
     pub seller_id: AccountId,
     pub offer_id: i64,
@@ -31038,6 +34186,7 @@ impl WriteXdr for ClaimOfferAtom {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClaimLiquidityAtom {
     pub liquidity_pool_id: PoolId,
     pub asset_sold: Asset,
@@ -31097,6 +34246,7 @@ impl WriteXdr for ClaimLiquidityAtom {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClaimAtom {
     V0(ClaimOfferAtomV0),
@@ -31220,6 +34370,7 @@ impl WriteXdr for ClaimAtom {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum CreateAccountResultCode {
     Success = 0,
@@ -31351,6 +34502,7 @@ impl WriteXdr for CreateAccountResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum CreateAccountResult {
     Success,
@@ -31494,6 +34646,7 @@ impl WriteXdr for CreateAccountResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum PaymentResultCode {
     Success = 0,
@@ -31655,6 +34808,7 @@ impl WriteXdr for PaymentResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum PaymentResult {
     Success,
@@ -31845,6 +34999,7 @@ impl WriteXdr for PaymentResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum PathPaymentStrictReceiveResultCode {
     Success = 0,
@@ -32011,6 +35166,7 @@ impl WriteXdr for PathPaymentStrictReceiveResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SimplePaymentResult {
     pub destination: AccountId,
     pub asset: Asset,
@@ -32059,6 +35215,7 @@ impl WriteXdr for SimplePaymentResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PathPaymentStrictReceiveResultSuccess {
     pub offers: VecM<ClaimAtom>,
     pub last: SimplePaymentResult,
@@ -32125,6 +35282,7 @@ impl WriteXdr for PathPaymentStrictReceiveResultSuccess {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum PathPaymentStrictReceiveResult {
     Success(PathPaymentStrictReceiveResultSuccess),
@@ -32338,6 +35496,7 @@ impl WriteXdr for PathPaymentStrictReceiveResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum PathPaymentStrictSendResultCode {
     Success = 0,
@@ -32503,6 +35662,7 @@ impl WriteXdr for PathPaymentStrictSendResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PathPaymentStrictSendResultSuccess {
     pub offers: VecM<ClaimAtom>,
     pub last: SimplePaymentResult,
@@ -32568,6 +35728,7 @@ impl WriteXdr for PathPaymentStrictSendResultSuccess {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum PathPaymentStrictSendResult {
     Success(PathPaymentStrictSendResultSuccess),
@@ -32780,6 +35941,7 @@ impl WriteXdr for PathPaymentStrictSendResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ManageSellOfferResultCode {
     Success = 0,
@@ -32947,6 +36109,7 @@ impl WriteXdr for ManageSellOfferResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ManageOfferEffect {
     Created = 0,
@@ -33062,6 +36225,7 @@ impl WriteXdr for ManageOfferEffect {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ManageOfferSuccessResultOffer {
     Created(OfferEntry),
@@ -33185,6 +36349,7 @@ impl WriteXdr for ManageOfferSuccessResultOffer {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManageOfferSuccessResult {
     pub offers_claimed: VecM<ClaimAtom>,
     pub offer: ManageOfferSuccessResultOffer,
@@ -33244,6 +36409,7 @@ impl WriteXdr for ManageOfferSuccessResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ManageSellOfferResult {
     Success(ManageOfferSuccessResult),
@@ -33453,6 +36619,7 @@ impl WriteXdr for ManageSellOfferResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ManageBuyOfferResultCode {
     Success = 0,
@@ -33632,6 +36799,7 @@ impl WriteXdr for ManageBuyOfferResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ManageBuyOfferResult {
     Success(ManageOfferSuccessResult),
@@ -33834,6 +37002,7 @@ impl WriteXdr for ManageBuyOfferResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SetOptionsResultCode {
     Success = 0,
@@ -34001,6 +37170,7 @@ impl WriteXdr for SetOptionsResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum SetOptionsResult {
     Success,
@@ -34188,6 +37358,7 @@ impl WriteXdr for SetOptionsResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ChangeTrustResultCode {
     Success = 0,
@@ -34343,6 +37514,7 @@ impl WriteXdr for ChangeTrustResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ChangeTrustResult {
     Success,
@@ -34514,6 +37686,7 @@ impl WriteXdr for ChangeTrustResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum AllowTrustResultCode {
     Success = 0,
@@ -34657,6 +37830,7 @@ impl WriteXdr for AllowTrustResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum AllowTrustResult {
     Success,
@@ -34812,6 +37986,7 @@ impl WriteXdr for AllowTrustResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum AccountMergeResultCode {
     Success = 0,
@@ -34961,6 +38136,7 @@ impl WriteXdr for AccountMergeResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum AccountMergeResult {
     Success(i64),
@@ -35116,6 +38292,7 @@ impl WriteXdr for AccountMergeResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum InflationResultCode {
     Success = 0,
@@ -35221,6 +38398,7 @@ impl WriteXdr for InflationResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InflationPayout {
     pub destination: AccountId,
     pub amount: i64,
@@ -35269,6 +38447,7 @@ impl WriteXdr for InflationPayout {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum InflationResult {
     Success(VecM<InflationPayout>),
@@ -35384,6 +38563,7 @@ impl WriteXdr for InflationResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ManageDataResultCode {
     Success = 0,
@@ -35515,6 +38695,7 @@ impl WriteXdr for ManageDataResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ManageDataResult {
     Success,
@@ -35649,6 +38830,7 @@ impl WriteXdr for ManageDataResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum BumpSequenceResultCode {
     Success = 0,
@@ -35759,6 +38941,7 @@ impl WriteXdr for BumpSequenceResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum BumpSequenceResult {
     Success,
@@ -35871,6 +39054,7 @@ impl WriteXdr for BumpSequenceResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum CreateClaimableBalanceResultCode {
     Success = 0,
@@ -36009,6 +39193,7 @@ impl WriteXdr for CreateClaimableBalanceResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum CreateClaimableBalanceResult {
     Success(ClaimableBalanceId),
@@ -36155,6 +39340,7 @@ impl WriteXdr for CreateClaimableBalanceResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClaimClaimableBalanceResultCode {
     Success = 0,
@@ -36292,6 +39478,7 @@ impl WriteXdr for ClaimClaimableBalanceResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClaimClaimableBalanceResult {
     Success,
@@ -36437,6 +39624,7 @@ impl WriteXdr for ClaimClaimableBalanceResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum BeginSponsoringFutureReservesResultCode {
     Success = 0,
@@ -36559,6 +39747,7 @@ impl WriteXdr for BeginSponsoringFutureReservesResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum BeginSponsoringFutureReservesResult {
     Success,
@@ -36684,6 +39873,7 @@ impl WriteXdr for BeginSponsoringFutureReservesResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum EndSponsoringFutureReservesResultCode {
     Success = 0,
@@ -36795,6 +39985,7 @@ impl WriteXdr for EndSponsoringFutureReservesResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum EndSponsoringFutureReservesResult {
     Success,
@@ -36911,6 +40102,7 @@ impl WriteXdr for EndSponsoringFutureReservesResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum RevokeSponsorshipResultCode {
     Success = 0,
@@ -37048,6 +40240,7 @@ impl WriteXdr for RevokeSponsorshipResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum RevokeSponsorshipResult {
     Success,
@@ -37194,6 +40387,7 @@ impl WriteXdr for RevokeSponsorshipResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClawbackResultCode {
     Success = 0,
@@ -37325,6 +40519,7 @@ impl WriteXdr for ClawbackResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClawbackResult {
     Success,
@@ -37462,6 +40657,7 @@ impl WriteXdr for ClawbackResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ClawbackClaimableBalanceResultCode {
     Success = 0,
@@ -37584,6 +40780,7 @@ impl WriteXdr for ClawbackClaimableBalanceResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ClawbackClaimableBalanceResult {
     Success,
@@ -37714,6 +40911,7 @@ impl WriteXdr for ClawbackClaimableBalanceResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SetTrustLineFlagsResultCode {
     Success = 0,
@@ -37851,6 +41049,7 @@ impl WriteXdr for SetTrustLineFlagsResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum SetTrustLineFlagsResult {
     Success,
@@ -38004,6 +41203,7 @@ impl WriteXdr for SetTrustLineFlagsResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LiquidityPoolDepositResultCode {
     Success = 0,
@@ -38153,6 +41353,7 @@ impl WriteXdr for LiquidityPoolDepositResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LiquidityPoolDepositResult {
     Success,
@@ -38317,6 +41518,7 @@ impl WriteXdr for LiquidityPoolDepositResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum LiquidityPoolWithdrawResultCode {
     Success = 0,
@@ -38454,6 +41656,7 @@ impl WriteXdr for LiquidityPoolWithdrawResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum LiquidityPoolWithdrawResult {
     Success,
@@ -38601,6 +41804,7 @@ impl WriteXdr for LiquidityPoolWithdrawResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum InvokeHostFunctionResultCode {
     Success = 0,
@@ -38738,6 +41942,7 @@ impl WriteXdr for InvokeHostFunctionResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum InvokeHostFunctionResult {
     Success(Hash),
@@ -38887,6 +42092,7 @@ impl WriteXdr for InvokeHostFunctionResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum ExtendFootprintTtlResultCode {
     Success = 0,
@@ -39012,6 +42218,7 @@ impl WriteXdr for ExtendFootprintTtlResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ExtendFootprintTtlResult {
     Success,
@@ -39147,6 +42354,7 @@ impl WriteXdr for ExtendFootprintTtlResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum RestoreFootprintResultCode {
     Success = 0,
@@ -39272,6 +42480,7 @@ impl WriteXdr for RestoreFootprintResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum RestoreFootprintResult {
     Success,
@@ -39408,6 +42617,7 @@ impl WriteXdr for RestoreFootprintResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum OperationResultCode {
     OpInner = 0,
@@ -39596,6 +42806,7 @@ impl WriteXdr for OperationResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum OperationResultTr {
     CreateAccount(CreateAccountResult),
@@ -39984,6 +43195,7 @@ impl WriteXdr for OperationResultTr {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum OperationResult {
     OpInner(OperationResultTr),
@@ -40151,6 +43363,7 @@ impl WriteXdr for OperationResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum TransactionResultCode {
     TxFeeBumpInnerSuccess = 1,
@@ -40366,6 +43579,7 @@ impl WriteXdr for TransactionResultCode {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum InnerTransactionResultResult {
     TxSuccess(VecM<OperationResult>),
@@ -40586,6 +43800,7 @@ impl WriteXdr for InnerTransactionResultResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum InnerTransactionResultExt {
     V0,
@@ -40719,6 +43934,7 @@ impl WriteXdr for InnerTransactionResultExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InnerTransactionResult {
     pub fee_charged: i64,
     pub result: InnerTransactionResultResult,
@@ -40767,6 +43983,7 @@ impl WriteXdr for InnerTransactionResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InnerTransactionResultPair {
     pub transaction_hash: Hash,
     pub result: InnerTransactionResult,
@@ -40834,6 +44051,7 @@ impl WriteXdr for InnerTransactionResultPair {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionResultResult {
     TxFeeBumpInnerSuccess(InnerTransactionResultPair),
@@ -41072,6 +44290,7 @@ impl WriteXdr for TransactionResultResult {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionResultExt {
     V0,
@@ -41206,6 +44425,7 @@ impl WriteXdr for TransactionResultExt {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransactionResult {
     pub fee_charged: i64,
     pub result: TransactionResultResult,
@@ -41277,6 +44497,39 @@ impl core::str::FromStr for Hash {
     type Err = Error;
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
         hex::decode(s).map_err(|_| Error::InvalidHex)?.try_into()
+    }
+}
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Hash {
+    fn schema_name() -> String {
+        "Hash".to_string()
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = String::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            schema.extensions.insert(
+                "contentEncoding".to_owned(),
+                serde_json::Value::String("hex".to_string()),
+            );
+            schema.extensions.insert(
+                "contentMediaType".to_owned(),
+                serde_json::Value::String("application/binary".to_string()),
+            );
+            let string = *schema.string.unwrap_or_default().clone();
+            schema.string = Some(Box::new(schemars::schema::StringValidation {
+                max_length: 32_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                min_length: 32_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                ..string
+            }));
+            schema.into()
+        } else {
+            schema
+        }
     }
 }
 impl From<Hash> for [u8; 32] {
@@ -41395,6 +44648,39 @@ impl core::str::FromStr for Uint256 {
     type Err = Error;
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
         hex::decode(s).map_err(|_| Error::InvalidHex)?.try_into()
+    }
+}
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Uint256 {
+    fn schema_name() -> String {
+        "Uint256".to_string()
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = String::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            schema.extensions.insert(
+                "contentEncoding".to_owned(),
+                serde_json::Value::String("hex".to_string()),
+            );
+            schema.extensions.insert(
+                "contentMediaType".to_owned(),
+                serde_json::Value::String("application/binary".to_string()),
+            );
+            let string = *schema.string.unwrap_or_default().clone();
+            schema.string = Some(Box::new(schemars::schema::StringValidation {
+                max_length: 32_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                min_length: 32_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                ..string
+            }));
+            schema.into()
+        } else {
+            schema
+        }
     }
 }
 impl From<Uint256> for [u8; 32] {
@@ -41518,6 +44804,7 @@ pub type Int64 = i64;
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct TimePoint(pub u64);
 
@@ -41573,6 +44860,7 @@ impl WriteXdr for TimePoint {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct Duration(pub u64);
 
@@ -41633,6 +44921,7 @@ impl WriteXdr for Duration {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[allow(clippy::large_enum_variant)]
 pub enum ExtensionPoint {
     V0,
@@ -41738,6 +45027,7 @@ impl WriteXdr for ExtensionPoint {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum CryptoKeyType {
     Ed25519 = 0,
@@ -41863,6 +45153,7 @@ impl WriteXdr for CryptoKeyType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum PublicKeyType {
     PublicKeyTypeEd25519 = 0,
@@ -41967,6 +45258,7 @@ impl WriteXdr for PublicKeyType {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(i32)]
 pub enum SignerKeyType {
     Ed25519 = 0,
@@ -42363,6 +45655,7 @@ impl WriteXdr for SignerKey {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug)]
 pub struct Signature(pub BytesM<64>);
 
@@ -42494,6 +45787,39 @@ impl core::str::FromStr for SignatureHint {
     type Err = Error;
     fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
         hex::decode(s).map_err(|_| Error::InvalidHex)?.try_into()
+    }
+}
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for SignatureHint {
+    fn schema_name() -> String {
+        "SignatureHint".to_string()
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = String::json_schema(gen);
+        if let schemars::schema::Schema::Object(mut schema) = schema {
+            schema.extensions.insert(
+                "contentEncoding".to_owned(),
+                serde_json::Value::String("hex".to_string()),
+            );
+            schema.extensions.insert(
+                "contentMediaType".to_owned(),
+                serde_json::Value::String("application/binary".to_string()),
+            );
+            let string = *schema.string.unwrap_or_default().clone();
+            schema.string = Some(Box::new(schemars::schema::StringValidation {
+                max_length: 4_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                min_length: 4_u32.checked_mul(2).map(Some).unwrap_or_default(),
+                ..string
+            }));
+            schema.into()
+        } else {
+            schema
+        }
     }
 }
 impl From<SignatureHint> for [u8; 4] {
@@ -42696,6 +46022,7 @@ impl WriteXdr for AccountId {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Curve25519Secret {
     pub key: [u8; 32],
 }
@@ -42737,6 +46064,7 @@ impl WriteXdr for Curve25519Secret {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Curve25519Public {
     pub key: [u8; 32],
 }
@@ -42778,6 +46106,7 @@ impl WriteXdr for Curve25519Public {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct HmacSha256Key {
     pub key: [u8; 32],
 }
@@ -42819,6 +46148,7 @@ impl WriteXdr for HmacSha256Key {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct HmacSha256Mac {
     pub mac: [u8; 32],
 }
@@ -42844,12 +46174,249 @@ impl WriteXdr for HmacSha256Mac {
     }
 }
 
+/// ShortHashSeed is an XDR Struct defines as:
+///
+/// ```text
+/// struct ShortHashSeed
+/// {
+///     opaque seed[16];
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ShortHashSeed {
+    pub seed: [u8; 16],
+}
+
+impl ReadXdr for ShortHashSeed {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                seed: <[u8; 16]>::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for ShortHashSeed {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.seed.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
+/// BinaryFuseFilterType is an XDR Enum defines as:
+///
+/// ```text
+/// enum BinaryFuseFilterType
+/// {
+///     BINARY_FUSE_FILTER_8_BIT = 0,
+///     BINARY_FUSE_FILTER_16_BIT = 1,
+///     BINARY_FUSE_FILTER_32_BIT = 2
+/// };
+/// ```
+///
+// enum
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[repr(i32)]
+pub enum BinaryFuseFilterType {
+    B8Bit = 0,
+    B16Bit = 1,
+    B32Bit = 2,
+}
+
+impl BinaryFuseFilterType {
+    pub const VARIANTS: [BinaryFuseFilterType; 3] = [
+        BinaryFuseFilterType::B8Bit,
+        BinaryFuseFilterType::B16Bit,
+        BinaryFuseFilterType::B32Bit,
+    ];
+    pub const VARIANTS_STR: [&'static str; 3] = ["B8Bit", "B16Bit", "B32Bit"];
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::B8Bit => "B8Bit",
+            Self::B16Bit => "B16Bit",
+            Self::B32Bit => "B32Bit",
+        }
+    }
+
+    #[must_use]
+    pub const fn variants() -> [BinaryFuseFilterType; 3] {
+        Self::VARIANTS
+    }
+}
+
+impl Name for BinaryFuseFilterType {
+    #[must_use]
+    fn name(&self) -> &'static str {
+        Self::name(self)
+    }
+}
+
+impl Variants<BinaryFuseFilterType> for BinaryFuseFilterType {
+    fn variants() -> slice::Iter<'static, BinaryFuseFilterType> {
+        Self::VARIANTS.iter()
+    }
+}
+
+impl Enum for BinaryFuseFilterType {}
+
+impl fmt::Display for BinaryFuseFilterType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl TryFrom<i32> for BinaryFuseFilterType {
+    type Error = Error;
+
+    fn try_from(i: i32) -> Result<Self> {
+        let e = match i {
+            0 => BinaryFuseFilterType::B8Bit,
+            1 => BinaryFuseFilterType::B16Bit,
+            2 => BinaryFuseFilterType::B32Bit,
+            #[allow(unreachable_patterns)]
+            _ => return Err(Error::Invalid),
+        };
+        Ok(e)
+    }
+}
+
+impl From<BinaryFuseFilterType> for i32 {
+    #[must_use]
+    fn from(e: BinaryFuseFilterType) -> Self {
+        e as Self
+    }
+}
+
+impl ReadXdr for BinaryFuseFilterType {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            let e = i32::read_xdr(r)?;
+            let v: Self = e.try_into()?;
+            Ok(v)
+        })
+    }
+}
+
+impl WriteXdr for BinaryFuseFilterType {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            let i: i32 = (*self).into();
+            i.write_xdr(w)
+        })
+    }
+}
+
+/// SerializedBinaryFuseFilter is an XDR Struct defines as:
+///
+/// ```text
+/// struct SerializedBinaryFuseFilter
+/// {
+///     BinaryFuseFilterType type;
+///
+///     // Seed used to hash input to filter
+///     ShortHashSeed inputHashSeed;
+///
+///     // Seed used for internal filter hash operations
+///     ShortHashSeed filterSeed;
+///     uint32 segmentLength;
+///     uint32 segementLengthMask;
+///     uint32 segmentCount;
+///     uint32 segmentCountLength;
+///     uint32 fingerprintLength; // Length in terms of element count, not bytes
+///
+///     // Array of uint8_t, uint16_t, or uint32_t depending on filter type
+///     opaque fingerprints<>;
+/// };
+/// ```
+///
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "serde", feature = "alloc"),
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SerializedBinaryFuseFilter {
+    pub type_: BinaryFuseFilterType,
+    pub input_hash_seed: ShortHashSeed,
+    pub filter_seed: ShortHashSeed,
+    pub segment_length: u32,
+    pub segement_length_mask: u32,
+    pub segment_count: u32,
+    pub segment_count_length: u32,
+    pub fingerprint_length: u32,
+    pub fingerprints: BytesM,
+}
+
+impl ReadXdr for SerializedBinaryFuseFilter {
+    #[cfg(feature = "std")]
+    fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self> {
+        r.with_limited_depth(|r| {
+            Ok(Self {
+                type_: BinaryFuseFilterType::read_xdr(r)?,
+                input_hash_seed: ShortHashSeed::read_xdr(r)?,
+                filter_seed: ShortHashSeed::read_xdr(r)?,
+                segment_length: u32::read_xdr(r)?,
+                segement_length_mask: u32::read_xdr(r)?,
+                segment_count: u32::read_xdr(r)?,
+                segment_count_length: u32::read_xdr(r)?,
+                fingerprint_length: u32::read_xdr(r)?,
+                fingerprints: BytesM::read_xdr(r)?,
+            })
+        })
+    }
+}
+
+impl WriteXdr for SerializedBinaryFuseFilter {
+    #[cfg(feature = "std")]
+    fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<()> {
+        w.with_limited_depth(|w| {
+            self.type_.write_xdr(w)?;
+            self.input_hash_seed.write_xdr(w)?;
+            self.filter_seed.write_xdr(w)?;
+            self.segment_length.write_xdr(w)?;
+            self.segement_length_mask.write_xdr(w)?;
+            self.segment_count.write_xdr(w)?;
+            self.segment_count_length.write_xdr(w)?;
+            self.fingerprint_length.write_xdr(w)?;
+            self.fingerprints.write_xdr(w)?;
+            Ok(())
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     all(feature = "serde", feature = "alloc"),
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum TypeVariant {
     Value,
     ScpBallot,
@@ -42864,6 +46431,7 @@ pub enum TypeVariant {
     ScpQuorumSet,
     ConfigSettingContractExecutionLanesV0,
     ConfigSettingContractComputeV0,
+    ConfigSettingContractParallelComputeV0,
     ConfigSettingContractLedgerCostV0,
     ConfigSettingContractHistoricalDataV0,
     ConfigSettingContractEventsV0,
@@ -43011,6 +46579,19 @@ pub enum TypeVariant {
     LedgerKeyConfigSetting,
     LedgerKeyTtl,
     EnvelopeType,
+    BucketListType,
+    BucketEntryType,
+    HotArchiveBucketEntryType,
+    ColdArchiveBucketEntryType,
+    BucketMetadata,
+    BucketMetadataExt,
+    BucketEntry,
+    HotArchiveBucketEntry,
+    ColdArchiveArchivedLeaf,
+    ColdArchiveDeletedLeaf,
+    ColdArchiveBoundaryLeaf,
+    ColdArchiveHashEntry,
+    ColdArchiveBucketEntry,
     UpgradeType,
     StellarValueType,
     LedgerCloseValueSignature,
@@ -43025,11 +46606,10 @@ pub enum TypeVariant {
     ConfigUpgradeSetKey,
     LedgerUpgrade,
     ConfigUpgradeSet,
-    BucketEntryType,
-    BucketMetadata,
-    BucketMetadataExt,
-    BucketEntry,
     TxSetComponentType,
+    TxExecutionThread,
+    ParallelTxExecutionStage,
+    ParallelTxsComponent,
     TxSetComponent,
     TxSetComponentTxsMaybeDiscountedFee,
     TransactionPhase,
@@ -43085,15 +46665,27 @@ pub enum TypeVariant {
     DontHave,
     SurveyMessageCommandType,
     SurveyMessageResponseType,
+    TimeSlicedSurveyStartCollectingMessage,
+    SignedTimeSlicedSurveyStartCollectingMessage,
+    TimeSlicedSurveyStopCollectingMessage,
+    SignedTimeSlicedSurveyStopCollectingMessage,
     SurveyRequestMessage,
+    TimeSlicedSurveyRequestMessage,
     SignedSurveyRequestMessage,
+    SignedTimeSlicedSurveyRequestMessage,
     EncryptedBody,
     SurveyResponseMessage,
+    TimeSlicedSurveyResponseMessage,
     SignedSurveyResponseMessage,
+    SignedTimeSlicedSurveyResponseMessage,
     PeerStats,
     PeerStatList,
+    TimeSlicedNodeData,
+    TimeSlicedPeerData,
+    TimeSlicedPeerDataList,
     TopologyResponseBodyV0,
     TopologyResponseBodyV1,
+    TopologyResponseBodyV2,
     SurveyResponseBody,
     TxAdvertVector,
     FloodAdvert,
@@ -43136,6 +46728,7 @@ pub enum TypeVariant {
     ContractIdPreimage,
     ContractIdPreimageFromAddress,
     CreateContractArgs,
+    CreateContractArgsV2,
     InvokeContractArgs,
     HostFunction,
     SorobanAuthorizedFunctionType,
@@ -43163,8 +46756,16 @@ pub enum TypeVariant {
     PreconditionType,
     Preconditions,
     LedgerFootprint,
+    ArchivalProofType,
+    ArchivalProofNode,
+    ProofLevel,
+    NonexistenceProofBody,
+    ExistenceProofBody,
+    ArchivalProof,
+    ArchivalProofBody,
     SorobanResources,
     SorobanTransactionData,
+    SorobanTransactionDataExt,
     TransactionV0,
     TransactionV0Ext,
     TransactionV0Envelope,
@@ -43276,10 +46877,13 @@ pub enum TypeVariant {
     Curve25519Public,
     HmacSha256Key,
     HmacSha256Mac,
+    ShortHashSeed,
+    BinaryFuseFilterType,
+    SerializedBinaryFuseFilter,
 }
 
 impl TypeVariant {
-    pub const VARIANTS: [TypeVariant; 425] = [
+    pub const VARIANTS: [TypeVariant; 462] = [
         TypeVariant::Value,
         TypeVariant::ScpBallot,
         TypeVariant::ScpStatementType,
@@ -43293,6 +46897,7 @@ impl TypeVariant {
         TypeVariant::ScpQuorumSet,
         TypeVariant::ConfigSettingContractExecutionLanesV0,
         TypeVariant::ConfigSettingContractComputeV0,
+        TypeVariant::ConfigSettingContractParallelComputeV0,
         TypeVariant::ConfigSettingContractLedgerCostV0,
         TypeVariant::ConfigSettingContractHistoricalDataV0,
         TypeVariant::ConfigSettingContractEventsV0,
@@ -43440,6 +47045,19 @@ impl TypeVariant {
         TypeVariant::LedgerKeyConfigSetting,
         TypeVariant::LedgerKeyTtl,
         TypeVariant::EnvelopeType,
+        TypeVariant::BucketListType,
+        TypeVariant::BucketEntryType,
+        TypeVariant::HotArchiveBucketEntryType,
+        TypeVariant::ColdArchiveBucketEntryType,
+        TypeVariant::BucketMetadata,
+        TypeVariant::BucketMetadataExt,
+        TypeVariant::BucketEntry,
+        TypeVariant::HotArchiveBucketEntry,
+        TypeVariant::ColdArchiveArchivedLeaf,
+        TypeVariant::ColdArchiveDeletedLeaf,
+        TypeVariant::ColdArchiveBoundaryLeaf,
+        TypeVariant::ColdArchiveHashEntry,
+        TypeVariant::ColdArchiveBucketEntry,
         TypeVariant::UpgradeType,
         TypeVariant::StellarValueType,
         TypeVariant::LedgerCloseValueSignature,
@@ -43454,11 +47072,10 @@ impl TypeVariant {
         TypeVariant::ConfigUpgradeSetKey,
         TypeVariant::LedgerUpgrade,
         TypeVariant::ConfigUpgradeSet,
-        TypeVariant::BucketEntryType,
-        TypeVariant::BucketMetadata,
-        TypeVariant::BucketMetadataExt,
-        TypeVariant::BucketEntry,
         TypeVariant::TxSetComponentType,
+        TypeVariant::TxExecutionThread,
+        TypeVariant::ParallelTxExecutionStage,
+        TypeVariant::ParallelTxsComponent,
         TypeVariant::TxSetComponent,
         TypeVariant::TxSetComponentTxsMaybeDiscountedFee,
         TypeVariant::TransactionPhase,
@@ -43514,15 +47131,27 @@ impl TypeVariant {
         TypeVariant::DontHave,
         TypeVariant::SurveyMessageCommandType,
         TypeVariant::SurveyMessageResponseType,
+        TypeVariant::TimeSlicedSurveyStartCollectingMessage,
+        TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage,
+        TypeVariant::TimeSlicedSurveyStopCollectingMessage,
+        TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage,
         TypeVariant::SurveyRequestMessage,
+        TypeVariant::TimeSlicedSurveyRequestMessage,
         TypeVariant::SignedSurveyRequestMessage,
+        TypeVariant::SignedTimeSlicedSurveyRequestMessage,
         TypeVariant::EncryptedBody,
         TypeVariant::SurveyResponseMessage,
+        TypeVariant::TimeSlicedSurveyResponseMessage,
         TypeVariant::SignedSurveyResponseMessage,
+        TypeVariant::SignedTimeSlicedSurveyResponseMessage,
         TypeVariant::PeerStats,
         TypeVariant::PeerStatList,
+        TypeVariant::TimeSlicedNodeData,
+        TypeVariant::TimeSlicedPeerData,
+        TypeVariant::TimeSlicedPeerDataList,
         TypeVariant::TopologyResponseBodyV0,
         TypeVariant::TopologyResponseBodyV1,
+        TypeVariant::TopologyResponseBodyV2,
         TypeVariant::SurveyResponseBody,
         TypeVariant::TxAdvertVector,
         TypeVariant::FloodAdvert,
@@ -43565,6 +47194,7 @@ impl TypeVariant {
         TypeVariant::ContractIdPreimage,
         TypeVariant::ContractIdPreimageFromAddress,
         TypeVariant::CreateContractArgs,
+        TypeVariant::CreateContractArgsV2,
         TypeVariant::InvokeContractArgs,
         TypeVariant::HostFunction,
         TypeVariant::SorobanAuthorizedFunctionType,
@@ -43592,8 +47222,16 @@ impl TypeVariant {
         TypeVariant::PreconditionType,
         TypeVariant::Preconditions,
         TypeVariant::LedgerFootprint,
+        TypeVariant::ArchivalProofType,
+        TypeVariant::ArchivalProofNode,
+        TypeVariant::ProofLevel,
+        TypeVariant::NonexistenceProofBody,
+        TypeVariant::ExistenceProofBody,
+        TypeVariant::ArchivalProof,
+        TypeVariant::ArchivalProofBody,
         TypeVariant::SorobanResources,
         TypeVariant::SorobanTransactionData,
+        TypeVariant::SorobanTransactionDataExt,
         TypeVariant::TransactionV0,
         TypeVariant::TransactionV0Ext,
         TypeVariant::TransactionV0Envelope,
@@ -43705,8 +47343,11 @@ impl TypeVariant {
         TypeVariant::Curve25519Public,
         TypeVariant::HmacSha256Key,
         TypeVariant::HmacSha256Mac,
+        TypeVariant::ShortHashSeed,
+        TypeVariant::BinaryFuseFilterType,
+        TypeVariant::SerializedBinaryFuseFilter,
     ];
-    pub const VARIANTS_STR: [&'static str; 425] = [
+    pub const VARIANTS_STR: [&'static str; 462] = [
         "Value",
         "ScpBallot",
         "ScpStatementType",
@@ -43720,6 +47361,7 @@ impl TypeVariant {
         "ScpQuorumSet",
         "ConfigSettingContractExecutionLanesV0",
         "ConfigSettingContractComputeV0",
+        "ConfigSettingContractParallelComputeV0",
         "ConfigSettingContractLedgerCostV0",
         "ConfigSettingContractHistoricalDataV0",
         "ConfigSettingContractEventsV0",
@@ -43867,6 +47509,19 @@ impl TypeVariant {
         "LedgerKeyConfigSetting",
         "LedgerKeyTtl",
         "EnvelopeType",
+        "BucketListType",
+        "BucketEntryType",
+        "HotArchiveBucketEntryType",
+        "ColdArchiveBucketEntryType",
+        "BucketMetadata",
+        "BucketMetadataExt",
+        "BucketEntry",
+        "HotArchiveBucketEntry",
+        "ColdArchiveArchivedLeaf",
+        "ColdArchiveDeletedLeaf",
+        "ColdArchiveBoundaryLeaf",
+        "ColdArchiveHashEntry",
+        "ColdArchiveBucketEntry",
         "UpgradeType",
         "StellarValueType",
         "LedgerCloseValueSignature",
@@ -43881,11 +47536,10 @@ impl TypeVariant {
         "ConfigUpgradeSetKey",
         "LedgerUpgrade",
         "ConfigUpgradeSet",
-        "BucketEntryType",
-        "BucketMetadata",
-        "BucketMetadataExt",
-        "BucketEntry",
         "TxSetComponentType",
+        "TxExecutionThread",
+        "ParallelTxExecutionStage",
+        "ParallelTxsComponent",
         "TxSetComponent",
         "TxSetComponentTxsMaybeDiscountedFee",
         "TransactionPhase",
@@ -43941,15 +47595,27 @@ impl TypeVariant {
         "DontHave",
         "SurveyMessageCommandType",
         "SurveyMessageResponseType",
+        "TimeSlicedSurveyStartCollectingMessage",
+        "SignedTimeSlicedSurveyStartCollectingMessage",
+        "TimeSlicedSurveyStopCollectingMessage",
+        "SignedTimeSlicedSurveyStopCollectingMessage",
         "SurveyRequestMessage",
+        "TimeSlicedSurveyRequestMessage",
         "SignedSurveyRequestMessage",
+        "SignedTimeSlicedSurveyRequestMessage",
         "EncryptedBody",
         "SurveyResponseMessage",
+        "TimeSlicedSurveyResponseMessage",
         "SignedSurveyResponseMessage",
+        "SignedTimeSlicedSurveyResponseMessage",
         "PeerStats",
         "PeerStatList",
+        "TimeSlicedNodeData",
+        "TimeSlicedPeerData",
+        "TimeSlicedPeerDataList",
         "TopologyResponseBodyV0",
         "TopologyResponseBodyV1",
+        "TopologyResponseBodyV2",
         "SurveyResponseBody",
         "TxAdvertVector",
         "FloodAdvert",
@@ -43992,6 +47658,7 @@ impl TypeVariant {
         "ContractIdPreimage",
         "ContractIdPreimageFromAddress",
         "CreateContractArgs",
+        "CreateContractArgsV2",
         "InvokeContractArgs",
         "HostFunction",
         "SorobanAuthorizedFunctionType",
@@ -44019,8 +47686,16 @@ impl TypeVariant {
         "PreconditionType",
         "Preconditions",
         "LedgerFootprint",
+        "ArchivalProofType",
+        "ArchivalProofNode",
+        "ProofLevel",
+        "NonexistenceProofBody",
+        "ExistenceProofBody",
+        "ArchivalProof",
+        "ArchivalProofBody",
         "SorobanResources",
         "SorobanTransactionData",
+        "SorobanTransactionDataExt",
         "TransactionV0",
         "TransactionV0Ext",
         "TransactionV0Envelope",
@@ -44132,6 +47807,9 @@ impl TypeVariant {
         "Curve25519Public",
         "HmacSha256Key",
         "HmacSha256Mac",
+        "ShortHashSeed",
+        "BinaryFuseFilterType",
+        "SerializedBinaryFuseFilter",
     ];
 
     #[must_use]
@@ -44151,6 +47829,9 @@ impl TypeVariant {
             Self::ScpQuorumSet => "ScpQuorumSet",
             Self::ConfigSettingContractExecutionLanesV0 => "ConfigSettingContractExecutionLanesV0",
             Self::ConfigSettingContractComputeV0 => "ConfigSettingContractComputeV0",
+            Self::ConfigSettingContractParallelComputeV0 => {
+                "ConfigSettingContractParallelComputeV0"
+            }
             Self::ConfigSettingContractLedgerCostV0 => "ConfigSettingContractLedgerCostV0",
             Self::ConfigSettingContractHistoricalDataV0 => "ConfigSettingContractHistoricalDataV0",
             Self::ConfigSettingContractEventsV0 => "ConfigSettingContractEventsV0",
@@ -44300,6 +47981,19 @@ impl TypeVariant {
             Self::LedgerKeyConfigSetting => "LedgerKeyConfigSetting",
             Self::LedgerKeyTtl => "LedgerKeyTtl",
             Self::EnvelopeType => "EnvelopeType",
+            Self::BucketListType => "BucketListType",
+            Self::BucketEntryType => "BucketEntryType",
+            Self::HotArchiveBucketEntryType => "HotArchiveBucketEntryType",
+            Self::ColdArchiveBucketEntryType => "ColdArchiveBucketEntryType",
+            Self::BucketMetadata => "BucketMetadata",
+            Self::BucketMetadataExt => "BucketMetadataExt",
+            Self::BucketEntry => "BucketEntry",
+            Self::HotArchiveBucketEntry => "HotArchiveBucketEntry",
+            Self::ColdArchiveArchivedLeaf => "ColdArchiveArchivedLeaf",
+            Self::ColdArchiveDeletedLeaf => "ColdArchiveDeletedLeaf",
+            Self::ColdArchiveBoundaryLeaf => "ColdArchiveBoundaryLeaf",
+            Self::ColdArchiveHashEntry => "ColdArchiveHashEntry",
+            Self::ColdArchiveBucketEntry => "ColdArchiveBucketEntry",
             Self::UpgradeType => "UpgradeType",
             Self::StellarValueType => "StellarValueType",
             Self::LedgerCloseValueSignature => "LedgerCloseValueSignature",
@@ -44314,11 +48008,10 @@ impl TypeVariant {
             Self::ConfigUpgradeSetKey => "ConfigUpgradeSetKey",
             Self::LedgerUpgrade => "LedgerUpgrade",
             Self::ConfigUpgradeSet => "ConfigUpgradeSet",
-            Self::BucketEntryType => "BucketEntryType",
-            Self::BucketMetadata => "BucketMetadata",
-            Self::BucketMetadataExt => "BucketMetadataExt",
-            Self::BucketEntry => "BucketEntry",
             Self::TxSetComponentType => "TxSetComponentType",
+            Self::TxExecutionThread => "TxExecutionThread",
+            Self::ParallelTxExecutionStage => "ParallelTxExecutionStage",
+            Self::ParallelTxsComponent => "ParallelTxsComponent",
             Self::TxSetComponent => "TxSetComponent",
             Self::TxSetComponentTxsMaybeDiscountedFee => "TxSetComponentTxsMaybeDiscountedFee",
             Self::TransactionPhase => "TransactionPhase",
@@ -44374,15 +48067,33 @@ impl TypeVariant {
             Self::DontHave => "DontHave",
             Self::SurveyMessageCommandType => "SurveyMessageCommandType",
             Self::SurveyMessageResponseType => "SurveyMessageResponseType",
+            Self::TimeSlicedSurveyStartCollectingMessage => {
+                "TimeSlicedSurveyStartCollectingMessage"
+            }
+            Self::SignedTimeSlicedSurveyStartCollectingMessage => {
+                "SignedTimeSlicedSurveyStartCollectingMessage"
+            }
+            Self::TimeSlicedSurveyStopCollectingMessage => "TimeSlicedSurveyStopCollectingMessage",
+            Self::SignedTimeSlicedSurveyStopCollectingMessage => {
+                "SignedTimeSlicedSurveyStopCollectingMessage"
+            }
             Self::SurveyRequestMessage => "SurveyRequestMessage",
+            Self::TimeSlicedSurveyRequestMessage => "TimeSlicedSurveyRequestMessage",
             Self::SignedSurveyRequestMessage => "SignedSurveyRequestMessage",
+            Self::SignedTimeSlicedSurveyRequestMessage => "SignedTimeSlicedSurveyRequestMessage",
             Self::EncryptedBody => "EncryptedBody",
             Self::SurveyResponseMessage => "SurveyResponseMessage",
+            Self::TimeSlicedSurveyResponseMessage => "TimeSlicedSurveyResponseMessage",
             Self::SignedSurveyResponseMessage => "SignedSurveyResponseMessage",
+            Self::SignedTimeSlicedSurveyResponseMessage => "SignedTimeSlicedSurveyResponseMessage",
             Self::PeerStats => "PeerStats",
             Self::PeerStatList => "PeerStatList",
+            Self::TimeSlicedNodeData => "TimeSlicedNodeData",
+            Self::TimeSlicedPeerData => "TimeSlicedPeerData",
+            Self::TimeSlicedPeerDataList => "TimeSlicedPeerDataList",
             Self::TopologyResponseBodyV0 => "TopologyResponseBodyV0",
             Self::TopologyResponseBodyV1 => "TopologyResponseBodyV1",
+            Self::TopologyResponseBodyV2 => "TopologyResponseBodyV2",
             Self::SurveyResponseBody => "SurveyResponseBody",
             Self::TxAdvertVector => "TxAdvertVector",
             Self::FloodAdvert => "FloodAdvert",
@@ -44425,6 +48136,7 @@ impl TypeVariant {
             Self::ContractIdPreimage => "ContractIdPreimage",
             Self::ContractIdPreimageFromAddress => "ContractIdPreimageFromAddress",
             Self::CreateContractArgs => "CreateContractArgs",
+            Self::CreateContractArgsV2 => "CreateContractArgsV2",
             Self::InvokeContractArgs => "InvokeContractArgs",
             Self::HostFunction => "HostFunction",
             Self::SorobanAuthorizedFunctionType => "SorobanAuthorizedFunctionType",
@@ -44452,8 +48164,16 @@ impl TypeVariant {
             Self::PreconditionType => "PreconditionType",
             Self::Preconditions => "Preconditions",
             Self::LedgerFootprint => "LedgerFootprint",
+            Self::ArchivalProofType => "ArchivalProofType",
+            Self::ArchivalProofNode => "ArchivalProofNode",
+            Self::ProofLevel => "ProofLevel",
+            Self::NonexistenceProofBody => "NonexistenceProofBody",
+            Self::ExistenceProofBody => "ExistenceProofBody",
+            Self::ArchivalProof => "ArchivalProof",
+            Self::ArchivalProofBody => "ArchivalProofBody",
             Self::SorobanResources => "SorobanResources",
             Self::SorobanTransactionData => "SorobanTransactionData",
+            Self::SorobanTransactionDataExt => "SorobanTransactionDataExt",
             Self::TransactionV0 => "TransactionV0",
             Self::TransactionV0Ext => "TransactionV0Ext",
             Self::TransactionV0Envelope => "TransactionV0Envelope",
@@ -44569,13 +48289,698 @@ impl TypeVariant {
             Self::Curve25519Public => "Curve25519Public",
             Self::HmacSha256Key => "HmacSha256Key",
             Self::HmacSha256Mac => "HmacSha256Mac",
+            Self::ShortHashSeed => "ShortHashSeed",
+            Self::BinaryFuseFilterType => "BinaryFuseFilterType",
+            Self::SerializedBinaryFuseFilter => "SerializedBinaryFuseFilter",
         }
     }
 
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub const fn variants() -> [TypeVariant; 425] {
+    pub const fn variants() -> [TypeVariant; 462] {
         Self::VARIANTS
+    }
+
+    #[cfg(feature = "schemars")]
+    #[must_use]
+    #[allow(clippy::too_many_lines)]
+    pub fn json_schema(&self, gen: schemars::gen::SchemaGenerator) -> schemars::schema::RootSchema {
+        match self {
+            Self::Value => gen.into_root_schema_for::<Value>(),
+            Self::ScpBallot => gen.into_root_schema_for::<ScpBallot>(),
+            Self::ScpStatementType => gen.into_root_schema_for::<ScpStatementType>(),
+            Self::ScpNomination => gen.into_root_schema_for::<ScpNomination>(),
+            Self::ScpStatement => gen.into_root_schema_for::<ScpStatement>(),
+            Self::ScpStatementPledges => gen.into_root_schema_for::<ScpStatementPledges>(),
+            Self::ScpStatementPrepare => gen.into_root_schema_for::<ScpStatementPrepare>(),
+            Self::ScpStatementConfirm => gen.into_root_schema_for::<ScpStatementConfirm>(),
+            Self::ScpStatementExternalize => gen.into_root_schema_for::<ScpStatementExternalize>(),
+            Self::ScpEnvelope => gen.into_root_schema_for::<ScpEnvelope>(),
+            Self::ScpQuorumSet => gen.into_root_schema_for::<ScpQuorumSet>(),
+            Self::ConfigSettingContractExecutionLanesV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractExecutionLanesV0>()
+            }
+            Self::ConfigSettingContractComputeV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractComputeV0>()
+            }
+            Self::ConfigSettingContractParallelComputeV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractParallelComputeV0>()
+            }
+            Self::ConfigSettingContractLedgerCostV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractLedgerCostV0>()
+            }
+            Self::ConfigSettingContractHistoricalDataV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractHistoricalDataV0>()
+            }
+            Self::ConfigSettingContractEventsV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractEventsV0>()
+            }
+            Self::ConfigSettingContractBandwidthV0 => {
+                gen.into_root_schema_for::<ConfigSettingContractBandwidthV0>()
+            }
+            Self::ContractCostType => gen.into_root_schema_for::<ContractCostType>(),
+            Self::ContractCostParamEntry => gen.into_root_schema_for::<ContractCostParamEntry>(),
+            Self::StateArchivalSettings => gen.into_root_schema_for::<StateArchivalSettings>(),
+            Self::EvictionIterator => gen.into_root_schema_for::<EvictionIterator>(),
+            Self::ContractCostParams => gen.into_root_schema_for::<ContractCostParams>(),
+            Self::ConfigSettingId => gen.into_root_schema_for::<ConfigSettingId>(),
+            Self::ConfigSettingEntry => gen.into_root_schema_for::<ConfigSettingEntry>(),
+            Self::ScEnvMetaKind => gen.into_root_schema_for::<ScEnvMetaKind>(),
+            Self::ScEnvMetaEntry => gen.into_root_schema_for::<ScEnvMetaEntry>(),
+            Self::ScMetaV0 => gen.into_root_schema_for::<ScMetaV0>(),
+            Self::ScMetaKind => gen.into_root_schema_for::<ScMetaKind>(),
+            Self::ScMetaEntry => gen.into_root_schema_for::<ScMetaEntry>(),
+            Self::ScSpecType => gen.into_root_schema_for::<ScSpecType>(),
+            Self::ScSpecTypeOption => gen.into_root_schema_for::<ScSpecTypeOption>(),
+            Self::ScSpecTypeResult => gen.into_root_schema_for::<ScSpecTypeResult>(),
+            Self::ScSpecTypeVec => gen.into_root_schema_for::<ScSpecTypeVec>(),
+            Self::ScSpecTypeMap => gen.into_root_schema_for::<ScSpecTypeMap>(),
+            Self::ScSpecTypeTuple => gen.into_root_schema_for::<ScSpecTypeTuple>(),
+            Self::ScSpecTypeBytesN => gen.into_root_schema_for::<ScSpecTypeBytesN>(),
+            Self::ScSpecTypeUdt => gen.into_root_schema_for::<ScSpecTypeUdt>(),
+            Self::ScSpecTypeDef => gen.into_root_schema_for::<ScSpecTypeDef>(),
+            Self::ScSpecUdtStructFieldV0 => gen.into_root_schema_for::<ScSpecUdtStructFieldV0>(),
+            Self::ScSpecUdtStructV0 => gen.into_root_schema_for::<ScSpecUdtStructV0>(),
+            Self::ScSpecUdtUnionCaseVoidV0 => {
+                gen.into_root_schema_for::<ScSpecUdtUnionCaseVoidV0>()
+            }
+            Self::ScSpecUdtUnionCaseTupleV0 => {
+                gen.into_root_schema_for::<ScSpecUdtUnionCaseTupleV0>()
+            }
+            Self::ScSpecUdtUnionCaseV0Kind => {
+                gen.into_root_schema_for::<ScSpecUdtUnionCaseV0Kind>()
+            }
+            Self::ScSpecUdtUnionCaseV0 => gen.into_root_schema_for::<ScSpecUdtUnionCaseV0>(),
+            Self::ScSpecUdtUnionV0 => gen.into_root_schema_for::<ScSpecUdtUnionV0>(),
+            Self::ScSpecUdtEnumCaseV0 => gen.into_root_schema_for::<ScSpecUdtEnumCaseV0>(),
+            Self::ScSpecUdtEnumV0 => gen.into_root_schema_for::<ScSpecUdtEnumV0>(),
+            Self::ScSpecUdtErrorEnumCaseV0 => {
+                gen.into_root_schema_for::<ScSpecUdtErrorEnumCaseV0>()
+            }
+            Self::ScSpecUdtErrorEnumV0 => gen.into_root_schema_for::<ScSpecUdtErrorEnumV0>(),
+            Self::ScSpecFunctionInputV0 => gen.into_root_schema_for::<ScSpecFunctionInputV0>(),
+            Self::ScSpecFunctionV0 => gen.into_root_schema_for::<ScSpecFunctionV0>(),
+            Self::ScSpecEntryKind => gen.into_root_schema_for::<ScSpecEntryKind>(),
+            Self::ScSpecEntry => gen.into_root_schema_for::<ScSpecEntry>(),
+            Self::ScValType => gen.into_root_schema_for::<ScValType>(),
+            Self::ScErrorType => gen.into_root_schema_for::<ScErrorType>(),
+            Self::ScErrorCode => gen.into_root_schema_for::<ScErrorCode>(),
+            Self::ScError => gen.into_root_schema_for::<ScError>(),
+            Self::UInt128Parts => gen.into_root_schema_for::<UInt128Parts>(),
+            Self::Int128Parts => gen.into_root_schema_for::<Int128Parts>(),
+            Self::UInt256Parts => gen.into_root_schema_for::<UInt256Parts>(),
+            Self::Int256Parts => gen.into_root_schema_for::<Int256Parts>(),
+            Self::ContractExecutableType => gen.into_root_schema_for::<ContractExecutableType>(),
+            Self::ContractExecutable => gen.into_root_schema_for::<ContractExecutable>(),
+            Self::ScAddressType => gen.into_root_schema_for::<ScAddressType>(),
+            Self::ScAddress => gen.into_root_schema_for::<ScAddress>(),
+            Self::ScVec => gen.into_root_schema_for::<ScVec>(),
+            Self::ScMap => gen.into_root_schema_for::<ScMap>(),
+            Self::ScBytes => gen.into_root_schema_for::<ScBytes>(),
+            Self::ScString => gen.into_root_schema_for::<ScString>(),
+            Self::ScSymbol => gen.into_root_schema_for::<ScSymbol>(),
+            Self::ScNonceKey => gen.into_root_schema_for::<ScNonceKey>(),
+            Self::ScContractInstance => gen.into_root_schema_for::<ScContractInstance>(),
+            Self::ScVal => gen.into_root_schema_for::<ScVal>(),
+            Self::ScMapEntry => gen.into_root_schema_for::<ScMapEntry>(),
+            Self::StoredTransactionSet => gen.into_root_schema_for::<StoredTransactionSet>(),
+            Self::StoredDebugTransactionSet => {
+                gen.into_root_schema_for::<StoredDebugTransactionSet>()
+            }
+            Self::PersistedScpStateV0 => gen.into_root_schema_for::<PersistedScpStateV0>(),
+            Self::PersistedScpStateV1 => gen.into_root_schema_for::<PersistedScpStateV1>(),
+            Self::PersistedScpState => gen.into_root_schema_for::<PersistedScpState>(),
+            Self::Thresholds => gen.into_root_schema_for::<Thresholds>(),
+            Self::String32 => gen.into_root_schema_for::<String32>(),
+            Self::String64 => gen.into_root_schema_for::<String64>(),
+            Self::SequenceNumber => gen.into_root_schema_for::<SequenceNumber>(),
+            Self::DataValue => gen.into_root_schema_for::<DataValue>(),
+            Self::PoolId => gen.into_root_schema_for::<PoolId>(),
+            Self::AssetCode4 => gen.into_root_schema_for::<AssetCode4>(),
+            Self::AssetCode12 => gen.into_root_schema_for::<AssetCode12>(),
+            Self::AssetType => gen.into_root_schema_for::<AssetType>(),
+            Self::AssetCode => gen.into_root_schema_for::<AssetCode>(),
+            Self::AlphaNum4 => gen.into_root_schema_for::<AlphaNum4>(),
+            Self::AlphaNum12 => gen.into_root_schema_for::<AlphaNum12>(),
+            Self::Asset => gen.into_root_schema_for::<Asset>(),
+            Self::Price => gen.into_root_schema_for::<Price>(),
+            Self::Liabilities => gen.into_root_schema_for::<Liabilities>(),
+            Self::ThresholdIndexes => gen.into_root_schema_for::<ThresholdIndexes>(),
+            Self::LedgerEntryType => gen.into_root_schema_for::<LedgerEntryType>(),
+            Self::Signer => gen.into_root_schema_for::<Signer>(),
+            Self::AccountFlags => gen.into_root_schema_for::<AccountFlags>(),
+            Self::SponsorshipDescriptor => gen.into_root_schema_for::<SponsorshipDescriptor>(),
+            Self::AccountEntryExtensionV3 => gen.into_root_schema_for::<AccountEntryExtensionV3>(),
+            Self::AccountEntryExtensionV2 => gen.into_root_schema_for::<AccountEntryExtensionV2>(),
+            Self::AccountEntryExtensionV2Ext => {
+                gen.into_root_schema_for::<AccountEntryExtensionV2Ext>()
+            }
+            Self::AccountEntryExtensionV1 => gen.into_root_schema_for::<AccountEntryExtensionV1>(),
+            Self::AccountEntryExtensionV1Ext => {
+                gen.into_root_schema_for::<AccountEntryExtensionV1Ext>()
+            }
+            Self::AccountEntry => gen.into_root_schema_for::<AccountEntry>(),
+            Self::AccountEntryExt => gen.into_root_schema_for::<AccountEntryExt>(),
+            Self::TrustLineFlags => gen.into_root_schema_for::<TrustLineFlags>(),
+            Self::LiquidityPoolType => gen.into_root_schema_for::<LiquidityPoolType>(),
+            Self::TrustLineAsset => gen.into_root_schema_for::<TrustLineAsset>(),
+            Self::TrustLineEntryExtensionV2 => {
+                gen.into_root_schema_for::<TrustLineEntryExtensionV2>()
+            }
+            Self::TrustLineEntryExtensionV2Ext => {
+                gen.into_root_schema_for::<TrustLineEntryExtensionV2Ext>()
+            }
+            Self::TrustLineEntry => gen.into_root_schema_for::<TrustLineEntry>(),
+            Self::TrustLineEntryExt => gen.into_root_schema_for::<TrustLineEntryExt>(),
+            Self::TrustLineEntryV1 => gen.into_root_schema_for::<TrustLineEntryV1>(),
+            Self::TrustLineEntryV1Ext => gen.into_root_schema_for::<TrustLineEntryV1Ext>(),
+            Self::OfferEntryFlags => gen.into_root_schema_for::<OfferEntryFlags>(),
+            Self::OfferEntry => gen.into_root_schema_for::<OfferEntry>(),
+            Self::OfferEntryExt => gen.into_root_schema_for::<OfferEntryExt>(),
+            Self::DataEntry => gen.into_root_schema_for::<DataEntry>(),
+            Self::DataEntryExt => gen.into_root_schema_for::<DataEntryExt>(),
+            Self::ClaimPredicateType => gen.into_root_schema_for::<ClaimPredicateType>(),
+            Self::ClaimPredicate => gen.into_root_schema_for::<ClaimPredicate>(),
+            Self::ClaimantType => gen.into_root_schema_for::<ClaimantType>(),
+            Self::Claimant => gen.into_root_schema_for::<Claimant>(),
+            Self::ClaimantV0 => gen.into_root_schema_for::<ClaimantV0>(),
+            Self::ClaimableBalanceIdType => gen.into_root_schema_for::<ClaimableBalanceIdType>(),
+            Self::ClaimableBalanceId => gen.into_root_schema_for::<ClaimableBalanceId>(),
+            Self::ClaimableBalanceFlags => gen.into_root_schema_for::<ClaimableBalanceFlags>(),
+            Self::ClaimableBalanceEntryExtensionV1 => {
+                gen.into_root_schema_for::<ClaimableBalanceEntryExtensionV1>()
+            }
+            Self::ClaimableBalanceEntryExtensionV1Ext => {
+                gen.into_root_schema_for::<ClaimableBalanceEntryExtensionV1Ext>()
+            }
+            Self::ClaimableBalanceEntry => gen.into_root_schema_for::<ClaimableBalanceEntry>(),
+            Self::ClaimableBalanceEntryExt => {
+                gen.into_root_schema_for::<ClaimableBalanceEntryExt>()
+            }
+            Self::LiquidityPoolConstantProductParameters => {
+                gen.into_root_schema_for::<LiquidityPoolConstantProductParameters>()
+            }
+            Self::LiquidityPoolEntry => gen.into_root_schema_for::<LiquidityPoolEntry>(),
+            Self::LiquidityPoolEntryBody => gen.into_root_schema_for::<LiquidityPoolEntryBody>(),
+            Self::LiquidityPoolEntryConstantProduct => {
+                gen.into_root_schema_for::<LiquidityPoolEntryConstantProduct>()
+            }
+            Self::ContractDataDurability => gen.into_root_schema_for::<ContractDataDurability>(),
+            Self::ContractDataEntry => gen.into_root_schema_for::<ContractDataEntry>(),
+            Self::ContractCodeCostInputs => gen.into_root_schema_for::<ContractCodeCostInputs>(),
+            Self::ContractCodeEntry => gen.into_root_schema_for::<ContractCodeEntry>(),
+            Self::ContractCodeEntryExt => gen.into_root_schema_for::<ContractCodeEntryExt>(),
+            Self::ContractCodeEntryV1 => gen.into_root_schema_for::<ContractCodeEntryV1>(),
+            Self::TtlEntry => gen.into_root_schema_for::<TtlEntry>(),
+            Self::LedgerEntryExtensionV1 => gen.into_root_schema_for::<LedgerEntryExtensionV1>(),
+            Self::LedgerEntryExtensionV1Ext => {
+                gen.into_root_schema_for::<LedgerEntryExtensionV1Ext>()
+            }
+            Self::LedgerEntry => gen.into_root_schema_for::<LedgerEntry>(),
+            Self::LedgerEntryData => gen.into_root_schema_for::<LedgerEntryData>(),
+            Self::LedgerEntryExt => gen.into_root_schema_for::<LedgerEntryExt>(),
+            Self::LedgerKey => gen.into_root_schema_for::<LedgerKey>(),
+            Self::LedgerKeyAccount => gen.into_root_schema_for::<LedgerKeyAccount>(),
+            Self::LedgerKeyTrustLine => gen.into_root_schema_for::<LedgerKeyTrustLine>(),
+            Self::LedgerKeyOffer => gen.into_root_schema_for::<LedgerKeyOffer>(),
+            Self::LedgerKeyData => gen.into_root_schema_for::<LedgerKeyData>(),
+            Self::LedgerKeyClaimableBalance => {
+                gen.into_root_schema_for::<LedgerKeyClaimableBalance>()
+            }
+            Self::LedgerKeyLiquidityPool => gen.into_root_schema_for::<LedgerKeyLiquidityPool>(),
+            Self::LedgerKeyContractData => gen.into_root_schema_for::<LedgerKeyContractData>(),
+            Self::LedgerKeyContractCode => gen.into_root_schema_for::<LedgerKeyContractCode>(),
+            Self::LedgerKeyConfigSetting => gen.into_root_schema_for::<LedgerKeyConfigSetting>(),
+            Self::LedgerKeyTtl => gen.into_root_schema_for::<LedgerKeyTtl>(),
+            Self::EnvelopeType => gen.into_root_schema_for::<EnvelopeType>(),
+            Self::BucketListType => gen.into_root_schema_for::<BucketListType>(),
+            Self::BucketEntryType => gen.into_root_schema_for::<BucketEntryType>(),
+            Self::HotArchiveBucketEntryType => {
+                gen.into_root_schema_for::<HotArchiveBucketEntryType>()
+            }
+            Self::ColdArchiveBucketEntryType => {
+                gen.into_root_schema_for::<ColdArchiveBucketEntryType>()
+            }
+            Self::BucketMetadata => gen.into_root_schema_for::<BucketMetadata>(),
+            Self::BucketMetadataExt => gen.into_root_schema_for::<BucketMetadataExt>(),
+            Self::BucketEntry => gen.into_root_schema_for::<BucketEntry>(),
+            Self::HotArchiveBucketEntry => gen.into_root_schema_for::<HotArchiveBucketEntry>(),
+            Self::ColdArchiveArchivedLeaf => gen.into_root_schema_for::<ColdArchiveArchivedLeaf>(),
+            Self::ColdArchiveDeletedLeaf => gen.into_root_schema_for::<ColdArchiveDeletedLeaf>(),
+            Self::ColdArchiveBoundaryLeaf => gen.into_root_schema_for::<ColdArchiveBoundaryLeaf>(),
+            Self::ColdArchiveHashEntry => gen.into_root_schema_for::<ColdArchiveHashEntry>(),
+            Self::ColdArchiveBucketEntry => gen.into_root_schema_for::<ColdArchiveBucketEntry>(),
+            Self::UpgradeType => gen.into_root_schema_for::<UpgradeType>(),
+            Self::StellarValueType => gen.into_root_schema_for::<StellarValueType>(),
+            Self::LedgerCloseValueSignature => {
+                gen.into_root_schema_for::<LedgerCloseValueSignature>()
+            }
+            Self::StellarValue => gen.into_root_schema_for::<StellarValue>(),
+            Self::StellarValueExt => gen.into_root_schema_for::<StellarValueExt>(),
+            Self::LedgerHeaderFlags => gen.into_root_schema_for::<LedgerHeaderFlags>(),
+            Self::LedgerHeaderExtensionV1 => gen.into_root_schema_for::<LedgerHeaderExtensionV1>(),
+            Self::LedgerHeaderExtensionV1Ext => {
+                gen.into_root_schema_for::<LedgerHeaderExtensionV1Ext>()
+            }
+            Self::LedgerHeader => gen.into_root_schema_for::<LedgerHeader>(),
+            Self::LedgerHeaderExt => gen.into_root_schema_for::<LedgerHeaderExt>(),
+            Self::LedgerUpgradeType => gen.into_root_schema_for::<LedgerUpgradeType>(),
+            Self::ConfigUpgradeSetKey => gen.into_root_schema_for::<ConfigUpgradeSetKey>(),
+            Self::LedgerUpgrade => gen.into_root_schema_for::<LedgerUpgrade>(),
+            Self::ConfigUpgradeSet => gen.into_root_schema_for::<ConfigUpgradeSet>(),
+            Self::TxSetComponentType => gen.into_root_schema_for::<TxSetComponentType>(),
+            Self::TxExecutionThread => gen.into_root_schema_for::<TxExecutionThread>(),
+            Self::ParallelTxExecutionStage => {
+                gen.into_root_schema_for::<ParallelTxExecutionStage>()
+            }
+            Self::ParallelTxsComponent => gen.into_root_schema_for::<ParallelTxsComponent>(),
+            Self::TxSetComponent => gen.into_root_schema_for::<TxSetComponent>(),
+            Self::TxSetComponentTxsMaybeDiscountedFee => {
+                gen.into_root_schema_for::<TxSetComponentTxsMaybeDiscountedFee>()
+            }
+            Self::TransactionPhase => gen.into_root_schema_for::<TransactionPhase>(),
+            Self::TransactionSet => gen.into_root_schema_for::<TransactionSet>(),
+            Self::TransactionSetV1 => gen.into_root_schema_for::<TransactionSetV1>(),
+            Self::GeneralizedTransactionSet => {
+                gen.into_root_schema_for::<GeneralizedTransactionSet>()
+            }
+            Self::TransactionResultPair => gen.into_root_schema_for::<TransactionResultPair>(),
+            Self::TransactionResultSet => gen.into_root_schema_for::<TransactionResultSet>(),
+            Self::TransactionHistoryEntry => gen.into_root_schema_for::<TransactionHistoryEntry>(),
+            Self::TransactionHistoryEntryExt => {
+                gen.into_root_schema_for::<TransactionHistoryEntryExt>()
+            }
+            Self::TransactionHistoryResultEntry => {
+                gen.into_root_schema_for::<TransactionHistoryResultEntry>()
+            }
+            Self::TransactionHistoryResultEntryExt => {
+                gen.into_root_schema_for::<TransactionHistoryResultEntryExt>()
+            }
+            Self::LedgerHeaderHistoryEntry => {
+                gen.into_root_schema_for::<LedgerHeaderHistoryEntry>()
+            }
+            Self::LedgerHeaderHistoryEntryExt => {
+                gen.into_root_schema_for::<LedgerHeaderHistoryEntryExt>()
+            }
+            Self::LedgerScpMessages => gen.into_root_schema_for::<LedgerScpMessages>(),
+            Self::ScpHistoryEntryV0 => gen.into_root_schema_for::<ScpHistoryEntryV0>(),
+            Self::ScpHistoryEntry => gen.into_root_schema_for::<ScpHistoryEntry>(),
+            Self::LedgerEntryChangeType => gen.into_root_schema_for::<LedgerEntryChangeType>(),
+            Self::LedgerEntryChange => gen.into_root_schema_for::<LedgerEntryChange>(),
+            Self::LedgerEntryChanges => gen.into_root_schema_for::<LedgerEntryChanges>(),
+            Self::OperationMeta => gen.into_root_schema_for::<OperationMeta>(),
+            Self::TransactionMetaV1 => gen.into_root_schema_for::<TransactionMetaV1>(),
+            Self::TransactionMetaV2 => gen.into_root_schema_for::<TransactionMetaV2>(),
+            Self::ContractEventType => gen.into_root_schema_for::<ContractEventType>(),
+            Self::ContractEvent => gen.into_root_schema_for::<ContractEvent>(),
+            Self::ContractEventBody => gen.into_root_schema_for::<ContractEventBody>(),
+            Self::ContractEventV0 => gen.into_root_schema_for::<ContractEventV0>(),
+            Self::DiagnosticEvent => gen.into_root_schema_for::<DiagnosticEvent>(),
+            Self::SorobanTransactionMetaExtV1 => {
+                gen.into_root_schema_for::<SorobanTransactionMetaExtV1>()
+            }
+            Self::SorobanTransactionMetaExt => {
+                gen.into_root_schema_for::<SorobanTransactionMetaExt>()
+            }
+            Self::SorobanTransactionMeta => gen.into_root_schema_for::<SorobanTransactionMeta>(),
+            Self::TransactionMetaV3 => gen.into_root_schema_for::<TransactionMetaV3>(),
+            Self::InvokeHostFunctionSuccessPreImage => {
+                gen.into_root_schema_for::<InvokeHostFunctionSuccessPreImage>()
+            }
+            Self::TransactionMeta => gen.into_root_schema_for::<TransactionMeta>(),
+            Self::TransactionResultMeta => gen.into_root_schema_for::<TransactionResultMeta>(),
+            Self::UpgradeEntryMeta => gen.into_root_schema_for::<UpgradeEntryMeta>(),
+            Self::LedgerCloseMetaV0 => gen.into_root_schema_for::<LedgerCloseMetaV0>(),
+            Self::LedgerCloseMetaExtV1 => gen.into_root_schema_for::<LedgerCloseMetaExtV1>(),
+            Self::LedgerCloseMetaExt => gen.into_root_schema_for::<LedgerCloseMetaExt>(),
+            Self::LedgerCloseMetaV1 => gen.into_root_schema_for::<LedgerCloseMetaV1>(),
+            Self::LedgerCloseMeta => gen.into_root_schema_for::<LedgerCloseMeta>(),
+            Self::ErrorCode => gen.into_root_schema_for::<ErrorCode>(),
+            Self::SError => gen.into_root_schema_for::<SError>(),
+            Self::SendMore => gen.into_root_schema_for::<SendMore>(),
+            Self::SendMoreExtended => gen.into_root_schema_for::<SendMoreExtended>(),
+            Self::AuthCert => gen.into_root_schema_for::<AuthCert>(),
+            Self::Hello => gen.into_root_schema_for::<Hello>(),
+            Self::Auth => gen.into_root_schema_for::<Auth>(),
+            Self::IpAddrType => gen.into_root_schema_for::<IpAddrType>(),
+            Self::PeerAddress => gen.into_root_schema_for::<PeerAddress>(),
+            Self::PeerAddressIp => gen.into_root_schema_for::<PeerAddressIp>(),
+            Self::MessageType => gen.into_root_schema_for::<MessageType>(),
+            Self::DontHave => gen.into_root_schema_for::<DontHave>(),
+            Self::SurveyMessageCommandType => {
+                gen.into_root_schema_for::<SurveyMessageCommandType>()
+            }
+            Self::SurveyMessageResponseType => {
+                gen.into_root_schema_for::<SurveyMessageResponseType>()
+            }
+            Self::TimeSlicedSurveyStartCollectingMessage => {
+                gen.into_root_schema_for::<TimeSlicedSurveyStartCollectingMessage>()
+            }
+            Self::SignedTimeSlicedSurveyStartCollectingMessage => {
+                gen.into_root_schema_for::<SignedTimeSlicedSurveyStartCollectingMessage>()
+            }
+            Self::TimeSlicedSurveyStopCollectingMessage => {
+                gen.into_root_schema_for::<TimeSlicedSurveyStopCollectingMessage>()
+            }
+            Self::SignedTimeSlicedSurveyStopCollectingMessage => {
+                gen.into_root_schema_for::<SignedTimeSlicedSurveyStopCollectingMessage>()
+            }
+            Self::SurveyRequestMessage => gen.into_root_schema_for::<SurveyRequestMessage>(),
+            Self::TimeSlicedSurveyRequestMessage => {
+                gen.into_root_schema_for::<TimeSlicedSurveyRequestMessage>()
+            }
+            Self::SignedSurveyRequestMessage => {
+                gen.into_root_schema_for::<SignedSurveyRequestMessage>()
+            }
+            Self::SignedTimeSlicedSurveyRequestMessage => {
+                gen.into_root_schema_for::<SignedTimeSlicedSurveyRequestMessage>()
+            }
+            Self::EncryptedBody => gen.into_root_schema_for::<EncryptedBody>(),
+            Self::SurveyResponseMessage => gen.into_root_schema_for::<SurveyResponseMessage>(),
+            Self::TimeSlicedSurveyResponseMessage => {
+                gen.into_root_schema_for::<TimeSlicedSurveyResponseMessage>()
+            }
+            Self::SignedSurveyResponseMessage => {
+                gen.into_root_schema_for::<SignedSurveyResponseMessage>()
+            }
+            Self::SignedTimeSlicedSurveyResponseMessage => {
+                gen.into_root_schema_for::<SignedTimeSlicedSurveyResponseMessage>()
+            }
+            Self::PeerStats => gen.into_root_schema_for::<PeerStats>(),
+            Self::PeerStatList => gen.into_root_schema_for::<PeerStatList>(),
+            Self::TimeSlicedNodeData => gen.into_root_schema_for::<TimeSlicedNodeData>(),
+            Self::TimeSlicedPeerData => gen.into_root_schema_for::<TimeSlicedPeerData>(),
+            Self::TimeSlicedPeerDataList => gen.into_root_schema_for::<TimeSlicedPeerDataList>(),
+            Self::TopologyResponseBodyV0 => gen.into_root_schema_for::<TopologyResponseBodyV0>(),
+            Self::TopologyResponseBodyV1 => gen.into_root_schema_for::<TopologyResponseBodyV1>(),
+            Self::TopologyResponseBodyV2 => gen.into_root_schema_for::<TopologyResponseBodyV2>(),
+            Self::SurveyResponseBody => gen.into_root_schema_for::<SurveyResponseBody>(),
+            Self::TxAdvertVector => gen.into_root_schema_for::<TxAdvertVector>(),
+            Self::FloodAdvert => gen.into_root_schema_for::<FloodAdvert>(),
+            Self::TxDemandVector => gen.into_root_schema_for::<TxDemandVector>(),
+            Self::FloodDemand => gen.into_root_schema_for::<FloodDemand>(),
+            Self::StellarMessage => gen.into_root_schema_for::<StellarMessage>(),
+            Self::AuthenticatedMessage => gen.into_root_schema_for::<AuthenticatedMessage>(),
+            Self::AuthenticatedMessageV0 => gen.into_root_schema_for::<AuthenticatedMessageV0>(),
+            Self::LiquidityPoolParameters => gen.into_root_schema_for::<LiquidityPoolParameters>(),
+            Self::MuxedAccount => gen.into_root_schema_for::<MuxedAccount>(),
+            Self::MuxedAccountMed25519 => gen.into_root_schema_for::<MuxedAccountMed25519>(),
+            Self::DecoratedSignature => gen.into_root_schema_for::<DecoratedSignature>(),
+            Self::OperationType => gen.into_root_schema_for::<OperationType>(),
+            Self::CreateAccountOp => gen.into_root_schema_for::<CreateAccountOp>(),
+            Self::PaymentOp => gen.into_root_schema_for::<PaymentOp>(),
+            Self::PathPaymentStrictReceiveOp => {
+                gen.into_root_schema_for::<PathPaymentStrictReceiveOp>()
+            }
+            Self::PathPaymentStrictSendOp => gen.into_root_schema_for::<PathPaymentStrictSendOp>(),
+            Self::ManageSellOfferOp => gen.into_root_schema_for::<ManageSellOfferOp>(),
+            Self::ManageBuyOfferOp => gen.into_root_schema_for::<ManageBuyOfferOp>(),
+            Self::CreatePassiveSellOfferOp => {
+                gen.into_root_schema_for::<CreatePassiveSellOfferOp>()
+            }
+            Self::SetOptionsOp => gen.into_root_schema_for::<SetOptionsOp>(),
+            Self::ChangeTrustAsset => gen.into_root_schema_for::<ChangeTrustAsset>(),
+            Self::ChangeTrustOp => gen.into_root_schema_for::<ChangeTrustOp>(),
+            Self::AllowTrustOp => gen.into_root_schema_for::<AllowTrustOp>(),
+            Self::ManageDataOp => gen.into_root_schema_for::<ManageDataOp>(),
+            Self::BumpSequenceOp => gen.into_root_schema_for::<BumpSequenceOp>(),
+            Self::CreateClaimableBalanceOp => {
+                gen.into_root_schema_for::<CreateClaimableBalanceOp>()
+            }
+            Self::ClaimClaimableBalanceOp => gen.into_root_schema_for::<ClaimClaimableBalanceOp>(),
+            Self::BeginSponsoringFutureReservesOp => {
+                gen.into_root_schema_for::<BeginSponsoringFutureReservesOp>()
+            }
+            Self::RevokeSponsorshipType => gen.into_root_schema_for::<RevokeSponsorshipType>(),
+            Self::RevokeSponsorshipOp => gen.into_root_schema_for::<RevokeSponsorshipOp>(),
+            Self::RevokeSponsorshipOpSigner => {
+                gen.into_root_schema_for::<RevokeSponsorshipOpSigner>()
+            }
+            Self::ClawbackOp => gen.into_root_schema_for::<ClawbackOp>(),
+            Self::ClawbackClaimableBalanceOp => {
+                gen.into_root_schema_for::<ClawbackClaimableBalanceOp>()
+            }
+            Self::SetTrustLineFlagsOp => gen.into_root_schema_for::<SetTrustLineFlagsOp>(),
+            Self::LiquidityPoolDepositOp => gen.into_root_schema_for::<LiquidityPoolDepositOp>(),
+            Self::LiquidityPoolWithdrawOp => gen.into_root_schema_for::<LiquidityPoolWithdrawOp>(),
+            Self::HostFunctionType => gen.into_root_schema_for::<HostFunctionType>(),
+            Self::ContractIdPreimageType => gen.into_root_schema_for::<ContractIdPreimageType>(),
+            Self::ContractIdPreimage => gen.into_root_schema_for::<ContractIdPreimage>(),
+            Self::ContractIdPreimageFromAddress => {
+                gen.into_root_schema_for::<ContractIdPreimageFromAddress>()
+            }
+            Self::CreateContractArgs => gen.into_root_schema_for::<CreateContractArgs>(),
+            Self::CreateContractArgsV2 => gen.into_root_schema_for::<CreateContractArgsV2>(),
+            Self::InvokeContractArgs => gen.into_root_schema_for::<InvokeContractArgs>(),
+            Self::HostFunction => gen.into_root_schema_for::<HostFunction>(),
+            Self::SorobanAuthorizedFunctionType => {
+                gen.into_root_schema_for::<SorobanAuthorizedFunctionType>()
+            }
+            Self::SorobanAuthorizedFunction => {
+                gen.into_root_schema_for::<SorobanAuthorizedFunction>()
+            }
+            Self::SorobanAuthorizedInvocation => {
+                gen.into_root_schema_for::<SorobanAuthorizedInvocation>()
+            }
+            Self::SorobanAddressCredentials => {
+                gen.into_root_schema_for::<SorobanAddressCredentials>()
+            }
+            Self::SorobanCredentialsType => gen.into_root_schema_for::<SorobanCredentialsType>(),
+            Self::SorobanCredentials => gen.into_root_schema_for::<SorobanCredentials>(),
+            Self::SorobanAuthorizationEntry => {
+                gen.into_root_schema_for::<SorobanAuthorizationEntry>()
+            }
+            Self::InvokeHostFunctionOp => gen.into_root_schema_for::<InvokeHostFunctionOp>(),
+            Self::ExtendFootprintTtlOp => gen.into_root_schema_for::<ExtendFootprintTtlOp>(),
+            Self::RestoreFootprintOp => gen.into_root_schema_for::<RestoreFootprintOp>(),
+            Self::Operation => gen.into_root_schema_for::<Operation>(),
+            Self::OperationBody => gen.into_root_schema_for::<OperationBody>(),
+            Self::HashIdPreimage => gen.into_root_schema_for::<HashIdPreimage>(),
+            Self::HashIdPreimageOperationId => {
+                gen.into_root_schema_for::<HashIdPreimageOperationId>()
+            }
+            Self::HashIdPreimageRevokeId => gen.into_root_schema_for::<HashIdPreimageRevokeId>(),
+            Self::HashIdPreimageContractId => {
+                gen.into_root_schema_for::<HashIdPreimageContractId>()
+            }
+            Self::HashIdPreimageSorobanAuthorization => {
+                gen.into_root_schema_for::<HashIdPreimageSorobanAuthorization>()
+            }
+            Self::MemoType => gen.into_root_schema_for::<MemoType>(),
+            Self::Memo => gen.into_root_schema_for::<Memo>(),
+            Self::TimeBounds => gen.into_root_schema_for::<TimeBounds>(),
+            Self::LedgerBounds => gen.into_root_schema_for::<LedgerBounds>(),
+            Self::PreconditionsV2 => gen.into_root_schema_for::<PreconditionsV2>(),
+            Self::PreconditionType => gen.into_root_schema_for::<PreconditionType>(),
+            Self::Preconditions => gen.into_root_schema_for::<Preconditions>(),
+            Self::LedgerFootprint => gen.into_root_schema_for::<LedgerFootprint>(),
+            Self::ArchivalProofType => gen.into_root_schema_for::<ArchivalProofType>(),
+            Self::ArchivalProofNode => gen.into_root_schema_for::<ArchivalProofNode>(),
+            Self::ProofLevel => gen.into_root_schema_for::<ProofLevel>(),
+            Self::NonexistenceProofBody => gen.into_root_schema_for::<NonexistenceProofBody>(),
+            Self::ExistenceProofBody => gen.into_root_schema_for::<ExistenceProofBody>(),
+            Self::ArchivalProof => gen.into_root_schema_for::<ArchivalProof>(),
+            Self::ArchivalProofBody => gen.into_root_schema_for::<ArchivalProofBody>(),
+            Self::SorobanResources => gen.into_root_schema_for::<SorobanResources>(),
+            Self::SorobanTransactionData => gen.into_root_schema_for::<SorobanTransactionData>(),
+            Self::SorobanTransactionDataExt => {
+                gen.into_root_schema_for::<SorobanTransactionDataExt>()
+            }
+            Self::TransactionV0 => gen.into_root_schema_for::<TransactionV0>(),
+            Self::TransactionV0Ext => gen.into_root_schema_for::<TransactionV0Ext>(),
+            Self::TransactionV0Envelope => gen.into_root_schema_for::<TransactionV0Envelope>(),
+            Self::Transaction => gen.into_root_schema_for::<Transaction>(),
+            Self::TransactionExt => gen.into_root_schema_for::<TransactionExt>(),
+            Self::TransactionV1Envelope => gen.into_root_schema_for::<TransactionV1Envelope>(),
+            Self::FeeBumpTransaction => gen.into_root_schema_for::<FeeBumpTransaction>(),
+            Self::FeeBumpTransactionInnerTx => {
+                gen.into_root_schema_for::<FeeBumpTransactionInnerTx>()
+            }
+            Self::FeeBumpTransactionExt => gen.into_root_schema_for::<FeeBumpTransactionExt>(),
+            Self::FeeBumpTransactionEnvelope => {
+                gen.into_root_schema_for::<FeeBumpTransactionEnvelope>()
+            }
+            Self::TransactionEnvelope => gen.into_root_schema_for::<TransactionEnvelope>(),
+            Self::TransactionSignaturePayload => {
+                gen.into_root_schema_for::<TransactionSignaturePayload>()
+            }
+            Self::TransactionSignaturePayloadTaggedTransaction => {
+                gen.into_root_schema_for::<TransactionSignaturePayloadTaggedTransaction>()
+            }
+            Self::ClaimAtomType => gen.into_root_schema_for::<ClaimAtomType>(),
+            Self::ClaimOfferAtomV0 => gen.into_root_schema_for::<ClaimOfferAtomV0>(),
+            Self::ClaimOfferAtom => gen.into_root_schema_for::<ClaimOfferAtom>(),
+            Self::ClaimLiquidityAtom => gen.into_root_schema_for::<ClaimLiquidityAtom>(),
+            Self::ClaimAtom => gen.into_root_schema_for::<ClaimAtom>(),
+            Self::CreateAccountResultCode => gen.into_root_schema_for::<CreateAccountResultCode>(),
+            Self::CreateAccountResult => gen.into_root_schema_for::<CreateAccountResult>(),
+            Self::PaymentResultCode => gen.into_root_schema_for::<PaymentResultCode>(),
+            Self::PaymentResult => gen.into_root_schema_for::<PaymentResult>(),
+            Self::PathPaymentStrictReceiveResultCode => {
+                gen.into_root_schema_for::<PathPaymentStrictReceiveResultCode>()
+            }
+            Self::SimplePaymentResult => gen.into_root_schema_for::<SimplePaymentResult>(),
+            Self::PathPaymentStrictReceiveResult => {
+                gen.into_root_schema_for::<PathPaymentStrictReceiveResult>()
+            }
+            Self::PathPaymentStrictReceiveResultSuccess => {
+                gen.into_root_schema_for::<PathPaymentStrictReceiveResultSuccess>()
+            }
+            Self::PathPaymentStrictSendResultCode => {
+                gen.into_root_schema_for::<PathPaymentStrictSendResultCode>()
+            }
+            Self::PathPaymentStrictSendResult => {
+                gen.into_root_schema_for::<PathPaymentStrictSendResult>()
+            }
+            Self::PathPaymentStrictSendResultSuccess => {
+                gen.into_root_schema_for::<PathPaymentStrictSendResultSuccess>()
+            }
+            Self::ManageSellOfferResultCode => {
+                gen.into_root_schema_for::<ManageSellOfferResultCode>()
+            }
+            Self::ManageOfferEffect => gen.into_root_schema_for::<ManageOfferEffect>(),
+            Self::ManageOfferSuccessResult => {
+                gen.into_root_schema_for::<ManageOfferSuccessResult>()
+            }
+            Self::ManageOfferSuccessResultOffer => {
+                gen.into_root_schema_for::<ManageOfferSuccessResultOffer>()
+            }
+            Self::ManageSellOfferResult => gen.into_root_schema_for::<ManageSellOfferResult>(),
+            Self::ManageBuyOfferResultCode => {
+                gen.into_root_schema_for::<ManageBuyOfferResultCode>()
+            }
+            Self::ManageBuyOfferResult => gen.into_root_schema_for::<ManageBuyOfferResult>(),
+            Self::SetOptionsResultCode => gen.into_root_schema_for::<SetOptionsResultCode>(),
+            Self::SetOptionsResult => gen.into_root_schema_for::<SetOptionsResult>(),
+            Self::ChangeTrustResultCode => gen.into_root_schema_for::<ChangeTrustResultCode>(),
+            Self::ChangeTrustResult => gen.into_root_schema_for::<ChangeTrustResult>(),
+            Self::AllowTrustResultCode => gen.into_root_schema_for::<AllowTrustResultCode>(),
+            Self::AllowTrustResult => gen.into_root_schema_for::<AllowTrustResult>(),
+            Self::AccountMergeResultCode => gen.into_root_schema_for::<AccountMergeResultCode>(),
+            Self::AccountMergeResult => gen.into_root_schema_for::<AccountMergeResult>(),
+            Self::InflationResultCode => gen.into_root_schema_for::<InflationResultCode>(),
+            Self::InflationPayout => gen.into_root_schema_for::<InflationPayout>(),
+            Self::InflationResult => gen.into_root_schema_for::<InflationResult>(),
+            Self::ManageDataResultCode => gen.into_root_schema_for::<ManageDataResultCode>(),
+            Self::ManageDataResult => gen.into_root_schema_for::<ManageDataResult>(),
+            Self::BumpSequenceResultCode => gen.into_root_schema_for::<BumpSequenceResultCode>(),
+            Self::BumpSequenceResult => gen.into_root_schema_for::<BumpSequenceResult>(),
+            Self::CreateClaimableBalanceResultCode => {
+                gen.into_root_schema_for::<CreateClaimableBalanceResultCode>()
+            }
+            Self::CreateClaimableBalanceResult => {
+                gen.into_root_schema_for::<CreateClaimableBalanceResult>()
+            }
+            Self::ClaimClaimableBalanceResultCode => {
+                gen.into_root_schema_for::<ClaimClaimableBalanceResultCode>()
+            }
+            Self::ClaimClaimableBalanceResult => {
+                gen.into_root_schema_for::<ClaimClaimableBalanceResult>()
+            }
+            Self::BeginSponsoringFutureReservesResultCode => {
+                gen.into_root_schema_for::<BeginSponsoringFutureReservesResultCode>()
+            }
+            Self::BeginSponsoringFutureReservesResult => {
+                gen.into_root_schema_for::<BeginSponsoringFutureReservesResult>()
+            }
+            Self::EndSponsoringFutureReservesResultCode => {
+                gen.into_root_schema_for::<EndSponsoringFutureReservesResultCode>()
+            }
+            Self::EndSponsoringFutureReservesResult => {
+                gen.into_root_schema_for::<EndSponsoringFutureReservesResult>()
+            }
+            Self::RevokeSponsorshipResultCode => {
+                gen.into_root_schema_for::<RevokeSponsorshipResultCode>()
+            }
+            Self::RevokeSponsorshipResult => gen.into_root_schema_for::<RevokeSponsorshipResult>(),
+            Self::ClawbackResultCode => gen.into_root_schema_for::<ClawbackResultCode>(),
+            Self::ClawbackResult => gen.into_root_schema_for::<ClawbackResult>(),
+            Self::ClawbackClaimableBalanceResultCode => {
+                gen.into_root_schema_for::<ClawbackClaimableBalanceResultCode>()
+            }
+            Self::ClawbackClaimableBalanceResult => {
+                gen.into_root_schema_for::<ClawbackClaimableBalanceResult>()
+            }
+            Self::SetTrustLineFlagsResultCode => {
+                gen.into_root_schema_for::<SetTrustLineFlagsResultCode>()
+            }
+            Self::SetTrustLineFlagsResult => gen.into_root_schema_for::<SetTrustLineFlagsResult>(),
+            Self::LiquidityPoolDepositResultCode => {
+                gen.into_root_schema_for::<LiquidityPoolDepositResultCode>()
+            }
+            Self::LiquidityPoolDepositResult => {
+                gen.into_root_schema_for::<LiquidityPoolDepositResult>()
+            }
+            Self::LiquidityPoolWithdrawResultCode => {
+                gen.into_root_schema_for::<LiquidityPoolWithdrawResultCode>()
+            }
+            Self::LiquidityPoolWithdrawResult => {
+                gen.into_root_schema_for::<LiquidityPoolWithdrawResult>()
+            }
+            Self::InvokeHostFunctionResultCode => {
+                gen.into_root_schema_for::<InvokeHostFunctionResultCode>()
+            }
+            Self::InvokeHostFunctionResult => {
+                gen.into_root_schema_for::<InvokeHostFunctionResult>()
+            }
+            Self::ExtendFootprintTtlResultCode => {
+                gen.into_root_schema_for::<ExtendFootprintTtlResultCode>()
+            }
+            Self::ExtendFootprintTtlResult => {
+                gen.into_root_schema_for::<ExtendFootprintTtlResult>()
+            }
+            Self::RestoreFootprintResultCode => {
+                gen.into_root_schema_for::<RestoreFootprintResultCode>()
+            }
+            Self::RestoreFootprintResult => gen.into_root_schema_for::<RestoreFootprintResult>(),
+            Self::OperationResultCode => gen.into_root_schema_for::<OperationResultCode>(),
+            Self::OperationResult => gen.into_root_schema_for::<OperationResult>(),
+            Self::OperationResultTr => gen.into_root_schema_for::<OperationResultTr>(),
+            Self::TransactionResultCode => gen.into_root_schema_for::<TransactionResultCode>(),
+            Self::InnerTransactionResult => gen.into_root_schema_for::<InnerTransactionResult>(),
+            Self::InnerTransactionResultResult => {
+                gen.into_root_schema_for::<InnerTransactionResultResult>()
+            }
+            Self::InnerTransactionResultExt => {
+                gen.into_root_schema_for::<InnerTransactionResultExt>()
+            }
+            Self::InnerTransactionResultPair => {
+                gen.into_root_schema_for::<InnerTransactionResultPair>()
+            }
+            Self::TransactionResult => gen.into_root_schema_for::<TransactionResult>(),
+            Self::TransactionResultResult => gen.into_root_schema_for::<TransactionResultResult>(),
+            Self::TransactionResultExt => gen.into_root_schema_for::<TransactionResultExt>(),
+            Self::Hash => gen.into_root_schema_for::<Hash>(),
+            Self::Uint256 => gen.into_root_schema_for::<Uint256>(),
+            Self::Uint32 => gen.into_root_schema_for::<Uint32>(),
+            Self::Int32 => gen.into_root_schema_for::<Int32>(),
+            Self::Uint64 => gen.into_root_schema_for::<Uint64>(),
+            Self::Int64 => gen.into_root_schema_for::<Int64>(),
+            Self::TimePoint => gen.into_root_schema_for::<TimePoint>(),
+            Self::Duration => gen.into_root_schema_for::<Duration>(),
+            Self::ExtensionPoint => gen.into_root_schema_for::<ExtensionPoint>(),
+            Self::CryptoKeyType => gen.into_root_schema_for::<CryptoKeyType>(),
+            Self::PublicKeyType => gen.into_root_schema_for::<PublicKeyType>(),
+            Self::SignerKeyType => gen.into_root_schema_for::<SignerKeyType>(),
+            Self::PublicKey => gen.into_root_schema_for::<PublicKey>(),
+            Self::SignerKey => gen.into_root_schema_for::<SignerKey>(),
+            Self::SignerKeyEd25519SignedPayload => {
+                gen.into_root_schema_for::<SignerKeyEd25519SignedPayload>()
+            }
+            Self::Signature => gen.into_root_schema_for::<Signature>(),
+            Self::SignatureHint => gen.into_root_schema_for::<SignatureHint>(),
+            Self::NodeId => gen.into_root_schema_for::<NodeId>(),
+            Self::AccountId => gen.into_root_schema_for::<AccountId>(),
+            Self::Curve25519Secret => gen.into_root_schema_for::<Curve25519Secret>(),
+            Self::Curve25519Public => gen.into_root_schema_for::<Curve25519Public>(),
+            Self::HmacSha256Key => gen.into_root_schema_for::<HmacSha256Key>(),
+            Self::HmacSha256Mac => gen.into_root_schema_for::<HmacSha256Mac>(),
+            Self::ShortHashSeed => gen.into_root_schema_for::<ShortHashSeed>(),
+            Self::BinaryFuseFilterType => gen.into_root_schema_for::<BinaryFuseFilterType>(),
+            Self::SerializedBinaryFuseFilter => {
+                gen.into_root_schema_for::<SerializedBinaryFuseFilter>()
+            }
+        }
     }
 }
 
@@ -44612,6 +49017,9 @@ impl core::str::FromStr for TypeVariant {
                 Ok(Self::ConfigSettingContractExecutionLanesV0)
             }
             "ConfigSettingContractComputeV0" => Ok(Self::ConfigSettingContractComputeV0),
+            "ConfigSettingContractParallelComputeV0" => {
+                Ok(Self::ConfigSettingContractParallelComputeV0)
+            }
             "ConfigSettingContractLedgerCostV0" => Ok(Self::ConfigSettingContractLedgerCostV0),
             "ConfigSettingContractHistoricalDataV0" => {
                 Ok(Self::ConfigSettingContractHistoricalDataV0)
@@ -44763,6 +49171,19 @@ impl core::str::FromStr for TypeVariant {
             "LedgerKeyConfigSetting" => Ok(Self::LedgerKeyConfigSetting),
             "LedgerKeyTtl" => Ok(Self::LedgerKeyTtl),
             "EnvelopeType" => Ok(Self::EnvelopeType),
+            "BucketListType" => Ok(Self::BucketListType),
+            "BucketEntryType" => Ok(Self::BucketEntryType),
+            "HotArchiveBucketEntryType" => Ok(Self::HotArchiveBucketEntryType),
+            "ColdArchiveBucketEntryType" => Ok(Self::ColdArchiveBucketEntryType),
+            "BucketMetadata" => Ok(Self::BucketMetadata),
+            "BucketMetadataExt" => Ok(Self::BucketMetadataExt),
+            "BucketEntry" => Ok(Self::BucketEntry),
+            "HotArchiveBucketEntry" => Ok(Self::HotArchiveBucketEntry),
+            "ColdArchiveArchivedLeaf" => Ok(Self::ColdArchiveArchivedLeaf),
+            "ColdArchiveDeletedLeaf" => Ok(Self::ColdArchiveDeletedLeaf),
+            "ColdArchiveBoundaryLeaf" => Ok(Self::ColdArchiveBoundaryLeaf),
+            "ColdArchiveHashEntry" => Ok(Self::ColdArchiveHashEntry),
+            "ColdArchiveBucketEntry" => Ok(Self::ColdArchiveBucketEntry),
             "UpgradeType" => Ok(Self::UpgradeType),
             "StellarValueType" => Ok(Self::StellarValueType),
             "LedgerCloseValueSignature" => Ok(Self::LedgerCloseValueSignature),
@@ -44777,11 +49198,10 @@ impl core::str::FromStr for TypeVariant {
             "ConfigUpgradeSetKey" => Ok(Self::ConfigUpgradeSetKey),
             "LedgerUpgrade" => Ok(Self::LedgerUpgrade),
             "ConfigUpgradeSet" => Ok(Self::ConfigUpgradeSet),
-            "BucketEntryType" => Ok(Self::BucketEntryType),
-            "BucketMetadata" => Ok(Self::BucketMetadata),
-            "BucketMetadataExt" => Ok(Self::BucketMetadataExt),
-            "BucketEntry" => Ok(Self::BucketEntry),
             "TxSetComponentType" => Ok(Self::TxSetComponentType),
+            "TxExecutionThread" => Ok(Self::TxExecutionThread),
+            "ParallelTxExecutionStage" => Ok(Self::ParallelTxExecutionStage),
+            "ParallelTxsComponent" => Ok(Self::ParallelTxsComponent),
             "TxSetComponent" => Ok(Self::TxSetComponent),
             "TxSetComponentTxsMaybeDiscountedFee" => Ok(Self::TxSetComponentTxsMaybeDiscountedFee),
             "TransactionPhase" => Ok(Self::TransactionPhase),
@@ -44837,15 +49257,39 @@ impl core::str::FromStr for TypeVariant {
             "DontHave" => Ok(Self::DontHave),
             "SurveyMessageCommandType" => Ok(Self::SurveyMessageCommandType),
             "SurveyMessageResponseType" => Ok(Self::SurveyMessageResponseType),
+            "TimeSlicedSurveyStartCollectingMessage" => {
+                Ok(Self::TimeSlicedSurveyStartCollectingMessage)
+            }
+            "SignedTimeSlicedSurveyStartCollectingMessage" => {
+                Ok(Self::SignedTimeSlicedSurveyStartCollectingMessage)
+            }
+            "TimeSlicedSurveyStopCollectingMessage" => {
+                Ok(Self::TimeSlicedSurveyStopCollectingMessage)
+            }
+            "SignedTimeSlicedSurveyStopCollectingMessage" => {
+                Ok(Self::SignedTimeSlicedSurveyStopCollectingMessage)
+            }
             "SurveyRequestMessage" => Ok(Self::SurveyRequestMessage),
+            "TimeSlicedSurveyRequestMessage" => Ok(Self::TimeSlicedSurveyRequestMessage),
             "SignedSurveyRequestMessage" => Ok(Self::SignedSurveyRequestMessage),
+            "SignedTimeSlicedSurveyRequestMessage" => {
+                Ok(Self::SignedTimeSlicedSurveyRequestMessage)
+            }
             "EncryptedBody" => Ok(Self::EncryptedBody),
             "SurveyResponseMessage" => Ok(Self::SurveyResponseMessage),
+            "TimeSlicedSurveyResponseMessage" => Ok(Self::TimeSlicedSurveyResponseMessage),
             "SignedSurveyResponseMessage" => Ok(Self::SignedSurveyResponseMessage),
+            "SignedTimeSlicedSurveyResponseMessage" => {
+                Ok(Self::SignedTimeSlicedSurveyResponseMessage)
+            }
             "PeerStats" => Ok(Self::PeerStats),
             "PeerStatList" => Ok(Self::PeerStatList),
+            "TimeSlicedNodeData" => Ok(Self::TimeSlicedNodeData),
+            "TimeSlicedPeerData" => Ok(Self::TimeSlicedPeerData),
+            "TimeSlicedPeerDataList" => Ok(Self::TimeSlicedPeerDataList),
             "TopologyResponseBodyV0" => Ok(Self::TopologyResponseBodyV0),
             "TopologyResponseBodyV1" => Ok(Self::TopologyResponseBodyV1),
+            "TopologyResponseBodyV2" => Ok(Self::TopologyResponseBodyV2),
             "SurveyResponseBody" => Ok(Self::SurveyResponseBody),
             "TxAdvertVector" => Ok(Self::TxAdvertVector),
             "FloodAdvert" => Ok(Self::FloodAdvert),
@@ -44888,6 +49332,7 @@ impl core::str::FromStr for TypeVariant {
             "ContractIdPreimage" => Ok(Self::ContractIdPreimage),
             "ContractIdPreimageFromAddress" => Ok(Self::ContractIdPreimageFromAddress),
             "CreateContractArgs" => Ok(Self::CreateContractArgs),
+            "CreateContractArgsV2" => Ok(Self::CreateContractArgsV2),
             "InvokeContractArgs" => Ok(Self::InvokeContractArgs),
             "HostFunction" => Ok(Self::HostFunction),
             "SorobanAuthorizedFunctionType" => Ok(Self::SorobanAuthorizedFunctionType),
@@ -44915,8 +49360,16 @@ impl core::str::FromStr for TypeVariant {
             "PreconditionType" => Ok(Self::PreconditionType),
             "Preconditions" => Ok(Self::Preconditions),
             "LedgerFootprint" => Ok(Self::LedgerFootprint),
+            "ArchivalProofType" => Ok(Self::ArchivalProofType),
+            "ArchivalProofNode" => Ok(Self::ArchivalProofNode),
+            "ProofLevel" => Ok(Self::ProofLevel),
+            "NonexistenceProofBody" => Ok(Self::NonexistenceProofBody),
+            "ExistenceProofBody" => Ok(Self::ExistenceProofBody),
+            "ArchivalProof" => Ok(Self::ArchivalProof),
+            "ArchivalProofBody" => Ok(Self::ArchivalProofBody),
             "SorobanResources" => Ok(Self::SorobanResources),
             "SorobanTransactionData" => Ok(Self::SorobanTransactionData),
+            "SorobanTransactionDataExt" => Ok(Self::SorobanTransactionDataExt),
             "TransactionV0" => Ok(Self::TransactionV0),
             "TransactionV0Ext" => Ok(Self::TransactionV0Ext),
             "TransactionV0Envelope" => Ok(Self::TransactionV0Envelope),
@@ -45036,6 +49489,9 @@ impl core::str::FromStr for TypeVariant {
             "Curve25519Public" => Ok(Self::Curve25519Public),
             "HmacSha256Key" => Ok(Self::HmacSha256Key),
             "HmacSha256Mac" => Ok(Self::HmacSha256Mac),
+            "ShortHashSeed" => Ok(Self::ShortHashSeed),
+            "BinaryFuseFilterType" => Ok(Self::BinaryFuseFilterType),
+            "SerializedBinaryFuseFilter" => Ok(Self::SerializedBinaryFuseFilter),
             _ => Err(Error::Invalid),
         }
     }
@@ -45048,6 +49504,7 @@ impl core::str::FromStr for TypeVariant {
     serde(rename_all = "snake_case"),
     serde(untagged)
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum Type {
     Value(Box<Value>),
     ScpBallot(Box<ScpBallot>),
@@ -45062,6 +49519,7 @@ pub enum Type {
     ScpQuorumSet(Box<ScpQuorumSet>),
     ConfigSettingContractExecutionLanesV0(Box<ConfigSettingContractExecutionLanesV0>),
     ConfigSettingContractComputeV0(Box<ConfigSettingContractComputeV0>),
+    ConfigSettingContractParallelComputeV0(Box<ConfigSettingContractParallelComputeV0>),
     ConfigSettingContractLedgerCostV0(Box<ConfigSettingContractLedgerCostV0>),
     ConfigSettingContractHistoricalDataV0(Box<ConfigSettingContractHistoricalDataV0>),
     ConfigSettingContractEventsV0(Box<ConfigSettingContractEventsV0>),
@@ -45209,6 +49667,19 @@ pub enum Type {
     LedgerKeyConfigSetting(Box<LedgerKeyConfigSetting>),
     LedgerKeyTtl(Box<LedgerKeyTtl>),
     EnvelopeType(Box<EnvelopeType>),
+    BucketListType(Box<BucketListType>),
+    BucketEntryType(Box<BucketEntryType>),
+    HotArchiveBucketEntryType(Box<HotArchiveBucketEntryType>),
+    ColdArchiveBucketEntryType(Box<ColdArchiveBucketEntryType>),
+    BucketMetadata(Box<BucketMetadata>),
+    BucketMetadataExt(Box<BucketMetadataExt>),
+    BucketEntry(Box<BucketEntry>),
+    HotArchiveBucketEntry(Box<HotArchiveBucketEntry>),
+    ColdArchiveArchivedLeaf(Box<ColdArchiveArchivedLeaf>),
+    ColdArchiveDeletedLeaf(Box<ColdArchiveDeletedLeaf>),
+    ColdArchiveBoundaryLeaf(Box<ColdArchiveBoundaryLeaf>),
+    ColdArchiveHashEntry(Box<ColdArchiveHashEntry>),
+    ColdArchiveBucketEntry(Box<ColdArchiveBucketEntry>),
     UpgradeType(Box<UpgradeType>),
     StellarValueType(Box<StellarValueType>),
     LedgerCloseValueSignature(Box<LedgerCloseValueSignature>),
@@ -45223,11 +49694,10 @@ pub enum Type {
     ConfigUpgradeSetKey(Box<ConfigUpgradeSetKey>),
     LedgerUpgrade(Box<LedgerUpgrade>),
     ConfigUpgradeSet(Box<ConfigUpgradeSet>),
-    BucketEntryType(Box<BucketEntryType>),
-    BucketMetadata(Box<BucketMetadata>),
-    BucketMetadataExt(Box<BucketMetadataExt>),
-    BucketEntry(Box<BucketEntry>),
     TxSetComponentType(Box<TxSetComponentType>),
+    TxExecutionThread(Box<TxExecutionThread>),
+    ParallelTxExecutionStage(Box<ParallelTxExecutionStage>),
+    ParallelTxsComponent(Box<ParallelTxsComponent>),
     TxSetComponent(Box<TxSetComponent>),
     TxSetComponentTxsMaybeDiscountedFee(Box<TxSetComponentTxsMaybeDiscountedFee>),
     TransactionPhase(Box<TransactionPhase>),
@@ -45283,15 +49753,27 @@ pub enum Type {
     DontHave(Box<DontHave>),
     SurveyMessageCommandType(Box<SurveyMessageCommandType>),
     SurveyMessageResponseType(Box<SurveyMessageResponseType>),
+    TimeSlicedSurveyStartCollectingMessage(Box<TimeSlicedSurveyStartCollectingMessage>),
+    SignedTimeSlicedSurveyStartCollectingMessage(Box<SignedTimeSlicedSurveyStartCollectingMessage>),
+    TimeSlicedSurveyStopCollectingMessage(Box<TimeSlicedSurveyStopCollectingMessage>),
+    SignedTimeSlicedSurveyStopCollectingMessage(Box<SignedTimeSlicedSurveyStopCollectingMessage>),
     SurveyRequestMessage(Box<SurveyRequestMessage>),
+    TimeSlicedSurveyRequestMessage(Box<TimeSlicedSurveyRequestMessage>),
     SignedSurveyRequestMessage(Box<SignedSurveyRequestMessage>),
+    SignedTimeSlicedSurveyRequestMessage(Box<SignedTimeSlicedSurveyRequestMessage>),
     EncryptedBody(Box<EncryptedBody>),
     SurveyResponseMessage(Box<SurveyResponseMessage>),
+    TimeSlicedSurveyResponseMessage(Box<TimeSlicedSurveyResponseMessage>),
     SignedSurveyResponseMessage(Box<SignedSurveyResponseMessage>),
+    SignedTimeSlicedSurveyResponseMessage(Box<SignedTimeSlicedSurveyResponseMessage>),
     PeerStats(Box<PeerStats>),
     PeerStatList(Box<PeerStatList>),
+    TimeSlicedNodeData(Box<TimeSlicedNodeData>),
+    TimeSlicedPeerData(Box<TimeSlicedPeerData>),
+    TimeSlicedPeerDataList(Box<TimeSlicedPeerDataList>),
     TopologyResponseBodyV0(Box<TopologyResponseBodyV0>),
     TopologyResponseBodyV1(Box<TopologyResponseBodyV1>),
+    TopologyResponseBodyV2(Box<TopologyResponseBodyV2>),
     SurveyResponseBody(Box<SurveyResponseBody>),
     TxAdvertVector(Box<TxAdvertVector>),
     FloodAdvert(Box<FloodAdvert>),
@@ -45334,6 +49816,7 @@ pub enum Type {
     ContractIdPreimage(Box<ContractIdPreimage>),
     ContractIdPreimageFromAddress(Box<ContractIdPreimageFromAddress>),
     CreateContractArgs(Box<CreateContractArgs>),
+    CreateContractArgsV2(Box<CreateContractArgsV2>),
     InvokeContractArgs(Box<InvokeContractArgs>),
     HostFunction(Box<HostFunction>),
     SorobanAuthorizedFunctionType(Box<SorobanAuthorizedFunctionType>),
@@ -45361,8 +49844,16 @@ pub enum Type {
     PreconditionType(Box<PreconditionType>),
     Preconditions(Box<Preconditions>),
     LedgerFootprint(Box<LedgerFootprint>),
+    ArchivalProofType(Box<ArchivalProofType>),
+    ArchivalProofNode(Box<ArchivalProofNode>),
+    ProofLevel(Box<ProofLevel>),
+    NonexistenceProofBody(Box<NonexistenceProofBody>),
+    ExistenceProofBody(Box<ExistenceProofBody>),
+    ArchivalProof(Box<ArchivalProof>),
+    ArchivalProofBody(Box<ArchivalProofBody>),
     SorobanResources(Box<SorobanResources>),
     SorobanTransactionData(Box<SorobanTransactionData>),
+    SorobanTransactionDataExt(Box<SorobanTransactionDataExt>),
     TransactionV0(Box<TransactionV0>),
     TransactionV0Ext(Box<TransactionV0Ext>),
     TransactionV0Envelope(Box<TransactionV0Envelope>),
@@ -45474,10 +49965,13 @@ pub enum Type {
     Curve25519Public(Box<Curve25519Public>),
     HmacSha256Key(Box<HmacSha256Key>),
     HmacSha256Mac(Box<HmacSha256Mac>),
+    ShortHashSeed(Box<ShortHashSeed>),
+    BinaryFuseFilterType(Box<BinaryFuseFilterType>),
+    SerializedBinaryFuseFilter(Box<SerializedBinaryFuseFilter>),
 }
 
 impl Type {
-    pub const VARIANTS: [TypeVariant; 425] = [
+    pub const VARIANTS: [TypeVariant; 462] = [
         TypeVariant::Value,
         TypeVariant::ScpBallot,
         TypeVariant::ScpStatementType,
@@ -45491,6 +49985,7 @@ impl Type {
         TypeVariant::ScpQuorumSet,
         TypeVariant::ConfigSettingContractExecutionLanesV0,
         TypeVariant::ConfigSettingContractComputeV0,
+        TypeVariant::ConfigSettingContractParallelComputeV0,
         TypeVariant::ConfigSettingContractLedgerCostV0,
         TypeVariant::ConfigSettingContractHistoricalDataV0,
         TypeVariant::ConfigSettingContractEventsV0,
@@ -45638,6 +50133,19 @@ impl Type {
         TypeVariant::LedgerKeyConfigSetting,
         TypeVariant::LedgerKeyTtl,
         TypeVariant::EnvelopeType,
+        TypeVariant::BucketListType,
+        TypeVariant::BucketEntryType,
+        TypeVariant::HotArchiveBucketEntryType,
+        TypeVariant::ColdArchiveBucketEntryType,
+        TypeVariant::BucketMetadata,
+        TypeVariant::BucketMetadataExt,
+        TypeVariant::BucketEntry,
+        TypeVariant::HotArchiveBucketEntry,
+        TypeVariant::ColdArchiveArchivedLeaf,
+        TypeVariant::ColdArchiveDeletedLeaf,
+        TypeVariant::ColdArchiveBoundaryLeaf,
+        TypeVariant::ColdArchiveHashEntry,
+        TypeVariant::ColdArchiveBucketEntry,
         TypeVariant::UpgradeType,
         TypeVariant::StellarValueType,
         TypeVariant::LedgerCloseValueSignature,
@@ -45652,11 +50160,10 @@ impl Type {
         TypeVariant::ConfigUpgradeSetKey,
         TypeVariant::LedgerUpgrade,
         TypeVariant::ConfigUpgradeSet,
-        TypeVariant::BucketEntryType,
-        TypeVariant::BucketMetadata,
-        TypeVariant::BucketMetadataExt,
-        TypeVariant::BucketEntry,
         TypeVariant::TxSetComponentType,
+        TypeVariant::TxExecutionThread,
+        TypeVariant::ParallelTxExecutionStage,
+        TypeVariant::ParallelTxsComponent,
         TypeVariant::TxSetComponent,
         TypeVariant::TxSetComponentTxsMaybeDiscountedFee,
         TypeVariant::TransactionPhase,
@@ -45712,15 +50219,27 @@ impl Type {
         TypeVariant::DontHave,
         TypeVariant::SurveyMessageCommandType,
         TypeVariant::SurveyMessageResponseType,
+        TypeVariant::TimeSlicedSurveyStartCollectingMessage,
+        TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage,
+        TypeVariant::TimeSlicedSurveyStopCollectingMessage,
+        TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage,
         TypeVariant::SurveyRequestMessage,
+        TypeVariant::TimeSlicedSurveyRequestMessage,
         TypeVariant::SignedSurveyRequestMessage,
+        TypeVariant::SignedTimeSlicedSurveyRequestMessage,
         TypeVariant::EncryptedBody,
         TypeVariant::SurveyResponseMessage,
+        TypeVariant::TimeSlicedSurveyResponseMessage,
         TypeVariant::SignedSurveyResponseMessage,
+        TypeVariant::SignedTimeSlicedSurveyResponseMessage,
         TypeVariant::PeerStats,
         TypeVariant::PeerStatList,
+        TypeVariant::TimeSlicedNodeData,
+        TypeVariant::TimeSlicedPeerData,
+        TypeVariant::TimeSlicedPeerDataList,
         TypeVariant::TopologyResponseBodyV0,
         TypeVariant::TopologyResponseBodyV1,
+        TypeVariant::TopologyResponseBodyV2,
         TypeVariant::SurveyResponseBody,
         TypeVariant::TxAdvertVector,
         TypeVariant::FloodAdvert,
@@ -45763,6 +50282,7 @@ impl Type {
         TypeVariant::ContractIdPreimage,
         TypeVariant::ContractIdPreimageFromAddress,
         TypeVariant::CreateContractArgs,
+        TypeVariant::CreateContractArgsV2,
         TypeVariant::InvokeContractArgs,
         TypeVariant::HostFunction,
         TypeVariant::SorobanAuthorizedFunctionType,
@@ -45790,8 +50310,16 @@ impl Type {
         TypeVariant::PreconditionType,
         TypeVariant::Preconditions,
         TypeVariant::LedgerFootprint,
+        TypeVariant::ArchivalProofType,
+        TypeVariant::ArchivalProofNode,
+        TypeVariant::ProofLevel,
+        TypeVariant::NonexistenceProofBody,
+        TypeVariant::ExistenceProofBody,
+        TypeVariant::ArchivalProof,
+        TypeVariant::ArchivalProofBody,
         TypeVariant::SorobanResources,
         TypeVariant::SorobanTransactionData,
+        TypeVariant::SorobanTransactionDataExt,
         TypeVariant::TransactionV0,
         TypeVariant::TransactionV0Ext,
         TypeVariant::TransactionV0Envelope,
@@ -45903,8 +50431,11 @@ impl Type {
         TypeVariant::Curve25519Public,
         TypeVariant::HmacSha256Key,
         TypeVariant::HmacSha256Mac,
+        TypeVariant::ShortHashSeed,
+        TypeVariant::BinaryFuseFilterType,
+        TypeVariant::SerializedBinaryFuseFilter,
     ];
-    pub const VARIANTS_STR: [&'static str; 425] = [
+    pub const VARIANTS_STR: [&'static str; 462] = [
         "Value",
         "ScpBallot",
         "ScpStatementType",
@@ -45918,6 +50449,7 @@ impl Type {
         "ScpQuorumSet",
         "ConfigSettingContractExecutionLanesV0",
         "ConfigSettingContractComputeV0",
+        "ConfigSettingContractParallelComputeV0",
         "ConfigSettingContractLedgerCostV0",
         "ConfigSettingContractHistoricalDataV0",
         "ConfigSettingContractEventsV0",
@@ -46065,6 +50597,19 @@ impl Type {
         "LedgerKeyConfigSetting",
         "LedgerKeyTtl",
         "EnvelopeType",
+        "BucketListType",
+        "BucketEntryType",
+        "HotArchiveBucketEntryType",
+        "ColdArchiveBucketEntryType",
+        "BucketMetadata",
+        "BucketMetadataExt",
+        "BucketEntry",
+        "HotArchiveBucketEntry",
+        "ColdArchiveArchivedLeaf",
+        "ColdArchiveDeletedLeaf",
+        "ColdArchiveBoundaryLeaf",
+        "ColdArchiveHashEntry",
+        "ColdArchiveBucketEntry",
         "UpgradeType",
         "StellarValueType",
         "LedgerCloseValueSignature",
@@ -46079,11 +50624,10 @@ impl Type {
         "ConfigUpgradeSetKey",
         "LedgerUpgrade",
         "ConfigUpgradeSet",
-        "BucketEntryType",
-        "BucketMetadata",
-        "BucketMetadataExt",
-        "BucketEntry",
         "TxSetComponentType",
+        "TxExecutionThread",
+        "ParallelTxExecutionStage",
+        "ParallelTxsComponent",
         "TxSetComponent",
         "TxSetComponentTxsMaybeDiscountedFee",
         "TransactionPhase",
@@ -46139,15 +50683,27 @@ impl Type {
         "DontHave",
         "SurveyMessageCommandType",
         "SurveyMessageResponseType",
+        "TimeSlicedSurveyStartCollectingMessage",
+        "SignedTimeSlicedSurveyStartCollectingMessage",
+        "TimeSlicedSurveyStopCollectingMessage",
+        "SignedTimeSlicedSurveyStopCollectingMessage",
         "SurveyRequestMessage",
+        "TimeSlicedSurveyRequestMessage",
         "SignedSurveyRequestMessage",
+        "SignedTimeSlicedSurveyRequestMessage",
         "EncryptedBody",
         "SurveyResponseMessage",
+        "TimeSlicedSurveyResponseMessage",
         "SignedSurveyResponseMessage",
+        "SignedTimeSlicedSurveyResponseMessage",
         "PeerStats",
         "PeerStatList",
+        "TimeSlicedNodeData",
+        "TimeSlicedPeerData",
+        "TimeSlicedPeerDataList",
         "TopologyResponseBodyV0",
         "TopologyResponseBodyV1",
+        "TopologyResponseBodyV2",
         "SurveyResponseBody",
         "TxAdvertVector",
         "FloodAdvert",
@@ -46190,6 +50746,7 @@ impl Type {
         "ContractIdPreimage",
         "ContractIdPreimageFromAddress",
         "CreateContractArgs",
+        "CreateContractArgsV2",
         "InvokeContractArgs",
         "HostFunction",
         "SorobanAuthorizedFunctionType",
@@ -46217,8 +50774,16 @@ impl Type {
         "PreconditionType",
         "Preconditions",
         "LedgerFootprint",
+        "ArchivalProofType",
+        "ArchivalProofNode",
+        "ProofLevel",
+        "NonexistenceProofBody",
+        "ExistenceProofBody",
+        "ArchivalProof",
+        "ArchivalProofBody",
         "SorobanResources",
         "SorobanTransactionData",
+        "SorobanTransactionDataExt",
         "TransactionV0",
         "TransactionV0Ext",
         "TransactionV0Envelope",
@@ -46330,6 +50895,9 @@ impl Type {
         "Curve25519Public",
         "HmacSha256Key",
         "HmacSha256Mac",
+        "ShortHashSeed",
+        "BinaryFuseFilterType",
+        "SerializedBinaryFuseFilter",
     ];
 
     #[cfg(feature = "std")]
@@ -46387,6 +50955,11 @@ impl Type {
             TypeVariant::ConfigSettingContractComputeV0 => r.with_limited_depth(|r| {
                 Ok(Self::ConfigSettingContractComputeV0(Box::new(
                     ConfigSettingContractComputeV0::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ConfigSettingContractParallelComputeV0 => r.with_limited_depth(|r| {
+                Ok(Self::ConfigSettingContractParallelComputeV0(Box::new(
+                    ConfigSettingContractParallelComputeV0::read_xdr(r)?,
                 )))
             }),
             TypeVariant::ConfigSettingContractLedgerCostV0 => r.with_limited_depth(|r| {
@@ -46992,6 +51565,65 @@ impl Type {
             TypeVariant::EnvelopeType => r.with_limited_depth(|r| {
                 Ok(Self::EnvelopeType(Box::new(EnvelopeType::read_xdr(r)?)))
             }),
+            TypeVariant::BucketListType => r.with_limited_depth(|r| {
+                Ok(Self::BucketListType(Box::new(BucketListType::read_xdr(r)?)))
+            }),
+            TypeVariant::BucketEntryType => r.with_limited_depth(|r| {
+                Ok(Self::BucketEntryType(Box::new(BucketEntryType::read_xdr(
+                    r,
+                )?)))
+            }),
+            TypeVariant::HotArchiveBucketEntryType => r.with_limited_depth(|r| {
+                Ok(Self::HotArchiveBucketEntryType(Box::new(
+                    HotArchiveBucketEntryType::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ColdArchiveBucketEntryType => r.with_limited_depth(|r| {
+                Ok(Self::ColdArchiveBucketEntryType(Box::new(
+                    ColdArchiveBucketEntryType::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::BucketMetadata => r.with_limited_depth(|r| {
+                Ok(Self::BucketMetadata(Box::new(BucketMetadata::read_xdr(r)?)))
+            }),
+            TypeVariant::BucketMetadataExt => r.with_limited_depth(|r| {
+                Ok(Self::BucketMetadataExt(Box::new(
+                    BucketMetadataExt::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::BucketEntry => {
+                r.with_limited_depth(|r| Ok(Self::BucketEntry(Box::new(BucketEntry::read_xdr(r)?))))
+            }
+            TypeVariant::HotArchiveBucketEntry => r.with_limited_depth(|r| {
+                Ok(Self::HotArchiveBucketEntry(Box::new(
+                    HotArchiveBucketEntry::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ColdArchiveArchivedLeaf => r.with_limited_depth(|r| {
+                Ok(Self::ColdArchiveArchivedLeaf(Box::new(
+                    ColdArchiveArchivedLeaf::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ColdArchiveDeletedLeaf => r.with_limited_depth(|r| {
+                Ok(Self::ColdArchiveDeletedLeaf(Box::new(
+                    ColdArchiveDeletedLeaf::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ColdArchiveBoundaryLeaf => r.with_limited_depth(|r| {
+                Ok(Self::ColdArchiveBoundaryLeaf(Box::new(
+                    ColdArchiveBoundaryLeaf::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ColdArchiveHashEntry => r.with_limited_depth(|r| {
+                Ok(Self::ColdArchiveHashEntry(Box::new(
+                    ColdArchiveHashEntry::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ColdArchiveBucketEntry => r.with_limited_depth(|r| {
+                Ok(Self::ColdArchiveBucketEntry(Box::new(
+                    ColdArchiveBucketEntry::read_xdr(r)?,
+                )))
+            }),
             TypeVariant::UpgradeType => {
                 r.with_limited_depth(|r| Ok(Self::UpgradeType(Box::new(UpgradeType::read_xdr(r)?))))
             }
@@ -47054,25 +51686,24 @@ impl Type {
                     ConfigUpgradeSet::read_xdr(r)?,
                 )))
             }),
-            TypeVariant::BucketEntryType => r.with_limited_depth(|r| {
-                Ok(Self::BucketEntryType(Box::new(BucketEntryType::read_xdr(
-                    r,
-                )?)))
-            }),
-            TypeVariant::BucketMetadata => r.with_limited_depth(|r| {
-                Ok(Self::BucketMetadata(Box::new(BucketMetadata::read_xdr(r)?)))
-            }),
-            TypeVariant::BucketMetadataExt => r.with_limited_depth(|r| {
-                Ok(Self::BucketMetadataExt(Box::new(
-                    BucketMetadataExt::read_xdr(r)?,
-                )))
-            }),
-            TypeVariant::BucketEntry => {
-                r.with_limited_depth(|r| Ok(Self::BucketEntry(Box::new(BucketEntry::read_xdr(r)?))))
-            }
             TypeVariant::TxSetComponentType => r.with_limited_depth(|r| {
                 Ok(Self::TxSetComponentType(Box::new(
                     TxSetComponentType::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::TxExecutionThread => r.with_limited_depth(|r| {
+                Ok(Self::TxExecutionThread(Box::new(
+                    TxExecutionThread::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ParallelTxExecutionStage => r.with_limited_depth(|r| {
+                Ok(Self::ParallelTxExecutionStage(Box::new(
+                    ParallelTxExecutionStage::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ParallelTxsComponent => r.with_limited_depth(|r| {
+                Ok(Self::ParallelTxsComponent(Box::new(
+                    ParallelTxsComponent::read_xdr(r)?,
                 )))
             }),
             TypeVariant::TxSetComponent => r.with_limited_depth(|r| {
@@ -47320,14 +51951,46 @@ impl Type {
                     SurveyMessageResponseType::read_xdr(r)?,
                 )))
             }),
+            TypeVariant::TimeSlicedSurveyStartCollectingMessage => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedSurveyStartCollectingMessage(Box::new(
+                    TimeSlicedSurveyStartCollectingMessage::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage => {
+                r.with_limited_depth(|r| {
+                    Ok(Self::SignedTimeSlicedSurveyStartCollectingMessage(
+                        Box::new(SignedTimeSlicedSurveyStartCollectingMessage::read_xdr(r)?),
+                    ))
+                })
+            }
+            TypeVariant::TimeSlicedSurveyStopCollectingMessage => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedSurveyStopCollectingMessage(Box::new(
+                    TimeSlicedSurveyStopCollectingMessage::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage => r.with_limited_depth(|r| {
+                Ok(Self::SignedTimeSlicedSurveyStopCollectingMessage(Box::new(
+                    SignedTimeSlicedSurveyStopCollectingMessage::read_xdr(r)?,
+                )))
+            }),
             TypeVariant::SurveyRequestMessage => r.with_limited_depth(|r| {
                 Ok(Self::SurveyRequestMessage(Box::new(
                     SurveyRequestMessage::read_xdr(r)?,
                 )))
             }),
+            TypeVariant::TimeSlicedSurveyRequestMessage => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedSurveyRequestMessage(Box::new(
+                    TimeSlicedSurveyRequestMessage::read_xdr(r)?,
+                )))
+            }),
             TypeVariant::SignedSurveyRequestMessage => r.with_limited_depth(|r| {
                 Ok(Self::SignedSurveyRequestMessage(Box::new(
                     SignedSurveyRequestMessage::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::SignedTimeSlicedSurveyRequestMessage => r.with_limited_depth(|r| {
+                Ok(Self::SignedTimeSlicedSurveyRequestMessage(Box::new(
+                    SignedTimeSlicedSurveyRequestMessage::read_xdr(r)?,
                 )))
             }),
             TypeVariant::EncryptedBody => r.with_limited_depth(|r| {
@@ -47338,9 +52001,19 @@ impl Type {
                     SurveyResponseMessage::read_xdr(r)?,
                 )))
             }),
+            TypeVariant::TimeSlicedSurveyResponseMessage => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedSurveyResponseMessage(Box::new(
+                    TimeSlicedSurveyResponseMessage::read_xdr(r)?,
+                )))
+            }),
             TypeVariant::SignedSurveyResponseMessage => r.with_limited_depth(|r| {
                 Ok(Self::SignedSurveyResponseMessage(Box::new(
                     SignedSurveyResponseMessage::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::SignedTimeSlicedSurveyResponseMessage => r.with_limited_depth(|r| {
+                Ok(Self::SignedTimeSlicedSurveyResponseMessage(Box::new(
+                    SignedTimeSlicedSurveyResponseMessage::read_xdr(r)?,
                 )))
             }),
             TypeVariant::PeerStats => {
@@ -47348,6 +52021,21 @@ impl Type {
             }
             TypeVariant::PeerStatList => r.with_limited_depth(|r| {
                 Ok(Self::PeerStatList(Box::new(PeerStatList::read_xdr(r)?)))
+            }),
+            TypeVariant::TimeSlicedNodeData => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedNodeData(Box::new(
+                    TimeSlicedNodeData::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::TimeSlicedPeerData => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedPeerData(Box::new(
+                    TimeSlicedPeerData::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::TimeSlicedPeerDataList => r.with_limited_depth(|r| {
+                Ok(Self::TimeSlicedPeerDataList(Box::new(
+                    TimeSlicedPeerDataList::read_xdr(r)?,
+                )))
             }),
             TypeVariant::TopologyResponseBodyV0 => r.with_limited_depth(|r| {
                 Ok(Self::TopologyResponseBodyV0(Box::new(
@@ -47357,6 +52045,11 @@ impl Type {
             TypeVariant::TopologyResponseBodyV1 => r.with_limited_depth(|r| {
                 Ok(Self::TopologyResponseBodyV1(Box::new(
                     TopologyResponseBodyV1::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::TopologyResponseBodyV2 => r.with_limited_depth(|r| {
+                Ok(Self::TopologyResponseBodyV2(Box::new(
+                    TopologyResponseBodyV2::read_xdr(r)?,
                 )))
             }),
             TypeVariant::SurveyResponseBody => r.with_limited_depth(|r| {
@@ -47541,6 +52234,11 @@ impl Type {
                     CreateContractArgs::read_xdr(r)?,
                 )))
             }),
+            TypeVariant::CreateContractArgsV2 => r.with_limited_depth(|r| {
+                Ok(Self::CreateContractArgsV2(Box::new(
+                    CreateContractArgsV2::read_xdr(r)?,
+                )))
+            }),
             TypeVariant::InvokeContractArgs => r.with_limited_depth(|r| {
                 Ok(Self::InvokeContractArgs(Box::new(
                     InvokeContractArgs::read_xdr(r)?,
@@ -47658,6 +52356,37 @@ impl Type {
                     r,
                 )?)))
             }),
+            TypeVariant::ArchivalProofType => r.with_limited_depth(|r| {
+                Ok(Self::ArchivalProofType(Box::new(
+                    ArchivalProofType::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ArchivalProofNode => r.with_limited_depth(|r| {
+                Ok(Self::ArchivalProofNode(Box::new(
+                    ArchivalProofNode::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ProofLevel => {
+                r.with_limited_depth(|r| Ok(Self::ProofLevel(Box::new(ProofLevel::read_xdr(r)?))))
+            }
+            TypeVariant::NonexistenceProofBody => r.with_limited_depth(|r| {
+                Ok(Self::NonexistenceProofBody(Box::new(
+                    NonexistenceProofBody::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ExistenceProofBody => r.with_limited_depth(|r| {
+                Ok(Self::ExistenceProofBody(Box::new(
+                    ExistenceProofBody::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::ArchivalProof => r.with_limited_depth(|r| {
+                Ok(Self::ArchivalProof(Box::new(ArchivalProof::read_xdr(r)?)))
+            }),
+            TypeVariant::ArchivalProofBody => r.with_limited_depth(|r| {
+                Ok(Self::ArchivalProofBody(Box::new(
+                    ArchivalProofBody::read_xdr(r)?,
+                )))
+            }),
             TypeVariant::SorobanResources => r.with_limited_depth(|r| {
                 Ok(Self::SorobanResources(Box::new(
                     SorobanResources::read_xdr(r)?,
@@ -47666,6 +52395,11 @@ impl Type {
             TypeVariant::SorobanTransactionData => r.with_limited_depth(|r| {
                 Ok(Self::SorobanTransactionData(Box::new(
                     SorobanTransactionData::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::SorobanTransactionDataExt => r.with_limited_depth(|r| {
+                Ok(Self::SorobanTransactionDataExt(Box::new(
+                    SorobanTransactionDataExt::read_xdr(r)?,
                 )))
             }),
             TypeVariant::TransactionV0 => r.with_limited_depth(|r| {
@@ -48169,6 +52903,19 @@ impl Type {
             TypeVariant::HmacSha256Mac => r.with_limited_depth(|r| {
                 Ok(Self::HmacSha256Mac(Box::new(HmacSha256Mac::read_xdr(r)?)))
             }),
+            TypeVariant::ShortHashSeed => r.with_limited_depth(|r| {
+                Ok(Self::ShortHashSeed(Box::new(ShortHashSeed::read_xdr(r)?)))
+            }),
+            TypeVariant::BinaryFuseFilterType => r.with_limited_depth(|r| {
+                Ok(Self::BinaryFuseFilterType(Box::new(
+                    BinaryFuseFilterType::read_xdr(r)?,
+                )))
+            }),
+            TypeVariant::SerializedBinaryFuseFilter => r.with_limited_depth(|r| {
+                Ok(Self::SerializedBinaryFuseFilter(Box::new(
+                    SerializedBinaryFuseFilter::read_xdr(r)?,
+                )))
+            }),
         }
     }
 
@@ -48268,6 +53015,13 @@ impl Type {
                     r.limits.clone(),
                 )
                 .map(|r| r.map(|t| Self::ConfigSettingContractComputeV0(Box::new(t)))),
+            ),
+            TypeVariant::ConfigSettingContractParallelComputeV0 => Box::new(
+                ReadXdrIter::<_, ConfigSettingContractParallelComputeV0>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ConfigSettingContractParallelComputeV0(Box::new(t)))),
             ),
             TypeVariant::ConfigSettingContractLedgerCostV0 => Box::new(
                 ReadXdrIter::<_, ConfigSettingContractLedgerCostV0>::new(
@@ -48881,6 +53635,58 @@ impl Type {
                 ReadXdrIter::<_, EnvelopeType>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::EnvelopeType(Box::new(t)))),
             ),
+            TypeVariant::BucketListType => Box::new(
+                ReadXdrIter::<_, BucketListType>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketListType(Box::new(t)))),
+            ),
+            TypeVariant::BucketEntryType => Box::new(
+                ReadXdrIter::<_, BucketEntryType>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketEntryType(Box::new(t)))),
+            ),
+            TypeVariant::HotArchiveBucketEntryType => Box::new(
+                ReadXdrIter::<_, HotArchiveBucketEntryType>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::HotArchiveBucketEntryType(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveBucketEntryType => Box::new(
+                ReadXdrIter::<_, ColdArchiveBucketEntryType>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveBucketEntryType(Box::new(t)))),
+            ),
+            TypeVariant::BucketMetadata => Box::new(
+                ReadXdrIter::<_, BucketMetadata>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketMetadata(Box::new(t)))),
+            ),
+            TypeVariant::BucketMetadataExt => Box::new(
+                ReadXdrIter::<_, BucketMetadataExt>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketMetadataExt(Box::new(t)))),
+            ),
+            TypeVariant::BucketEntry => Box::new(
+                ReadXdrIter::<_, BucketEntry>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketEntry(Box::new(t)))),
+            ),
+            TypeVariant::HotArchiveBucketEntry => Box::new(
+                ReadXdrIter::<_, HotArchiveBucketEntry>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::HotArchiveBucketEntry(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveArchivedLeaf => Box::new(
+                ReadXdrIter::<_, ColdArchiveArchivedLeaf>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveArchivedLeaf(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveDeletedLeaf => Box::new(
+                ReadXdrIter::<_, ColdArchiveDeletedLeaf>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveDeletedLeaf(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveBoundaryLeaf => Box::new(
+                ReadXdrIter::<_, ColdArchiveBoundaryLeaf>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveBoundaryLeaf(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveHashEntry => Box::new(
+                ReadXdrIter::<_, ColdArchiveHashEntry>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveHashEntry(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveBucketEntry => Box::new(
+                ReadXdrIter::<_, ColdArchiveBucketEntry>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveBucketEntry(Box::new(t)))),
+            ),
             TypeVariant::UpgradeType => Box::new(
                 ReadXdrIter::<_, UpgradeType>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::UpgradeType(Box::new(t)))),
@@ -48937,25 +53743,21 @@ impl Type {
                 ReadXdrIter::<_, ConfigUpgradeSet>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::ConfigUpgradeSet(Box::new(t)))),
             ),
-            TypeVariant::BucketEntryType => Box::new(
-                ReadXdrIter::<_, BucketEntryType>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketEntryType(Box::new(t)))),
-            ),
-            TypeVariant::BucketMetadata => Box::new(
-                ReadXdrIter::<_, BucketMetadata>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketMetadata(Box::new(t)))),
-            ),
-            TypeVariant::BucketMetadataExt => Box::new(
-                ReadXdrIter::<_, BucketMetadataExt>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketMetadataExt(Box::new(t)))),
-            ),
-            TypeVariant::BucketEntry => Box::new(
-                ReadXdrIter::<_, BucketEntry>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketEntry(Box::new(t)))),
-            ),
             TypeVariant::TxSetComponentType => Box::new(
                 ReadXdrIter::<_, TxSetComponentType>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::TxSetComponentType(Box::new(t)))),
+            ),
+            TypeVariant::TxExecutionThread => Box::new(
+                ReadXdrIter::<_, TxExecutionThread>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TxExecutionThread(Box::new(t)))),
+            ),
+            TypeVariant::ParallelTxExecutionStage => Box::new(
+                ReadXdrIter::<_, ParallelTxExecutionStage>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ParallelTxExecutionStage(Box::new(t)))),
+            ),
+            TypeVariant::ParallelTxsComponent => Box::new(
+                ReadXdrIter::<_, ParallelTxsComponent>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ParallelTxsComponent(Box::new(t)))),
             ),
             TypeVariant::TxSetComponent => Box::new(
                 ReadXdrIter::<_, TxSetComponent>::new(&mut r.inner, r.limits.clone())
@@ -49189,13 +53991,57 @@ impl Type {
                 ReadXdrIter::<_, SurveyMessageResponseType>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyMessageResponseType(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedSurveyStartCollectingMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyStartCollectingMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyStartCollectingMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyStartCollectingMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| {
+                    r.map(|t| Self::SignedTimeSlicedSurveyStartCollectingMessage(Box::new(t)))
+                }),
+            ),
+            TypeVariant::TimeSlicedSurveyStopCollectingMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyStopCollectingMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyStopCollectingMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyStopCollectingMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyStopCollectingMessage(Box::new(t)))),
+            ),
             TypeVariant::SurveyRequestMessage => Box::new(
                 ReadXdrIter::<_, SurveyRequestMessage>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyRequestMessage(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedSurveyRequestMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyRequestMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyRequestMessage(Box::new(t)))),
+            ),
             TypeVariant::SignedSurveyRequestMessage => Box::new(
                 ReadXdrIter::<_, SignedSurveyRequestMessage>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SignedSurveyRequestMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyRequestMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyRequestMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyRequestMessage(Box::new(t)))),
             ),
             TypeVariant::EncryptedBody => Box::new(
                 ReadXdrIter::<_, EncryptedBody>::new(&mut r.inner, r.limits.clone())
@@ -49205,9 +54051,23 @@ impl Type {
                 ReadXdrIter::<_, SurveyResponseMessage>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyResponseMessage(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedSurveyResponseMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyResponseMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyResponseMessage(Box::new(t)))),
+            ),
             TypeVariant::SignedSurveyResponseMessage => Box::new(
                 ReadXdrIter::<_, SignedSurveyResponseMessage>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SignedSurveyResponseMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyResponseMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyResponseMessage>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyResponseMessage(Box::new(t)))),
             ),
             TypeVariant::PeerStats => Box::new(
                 ReadXdrIter::<_, PeerStats>::new(&mut r.inner, r.limits.clone())
@@ -49217,6 +54077,18 @@ impl Type {
                 ReadXdrIter::<_, PeerStatList>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::PeerStatList(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedNodeData => Box::new(
+                ReadXdrIter::<_, TimeSlicedNodeData>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedNodeData(Box::new(t)))),
+            ),
+            TypeVariant::TimeSlicedPeerData => Box::new(
+                ReadXdrIter::<_, TimeSlicedPeerData>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedPeerData(Box::new(t)))),
+            ),
+            TypeVariant::TimeSlicedPeerDataList => Box::new(
+                ReadXdrIter::<_, TimeSlicedPeerDataList>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedPeerDataList(Box::new(t)))),
+            ),
             TypeVariant::TopologyResponseBodyV0 => Box::new(
                 ReadXdrIter::<_, TopologyResponseBodyV0>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::TopologyResponseBodyV0(Box::new(t)))),
@@ -49224,6 +54096,10 @@ impl Type {
             TypeVariant::TopologyResponseBodyV1 => Box::new(
                 ReadXdrIter::<_, TopologyResponseBodyV1>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::TopologyResponseBodyV1(Box::new(t)))),
+            ),
+            TypeVariant::TopologyResponseBodyV2 => Box::new(
+                ReadXdrIter::<_, TopologyResponseBodyV2>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TopologyResponseBodyV2(Box::new(t)))),
             ),
             TypeVariant::SurveyResponseBody => Box::new(
                 ReadXdrIter::<_, SurveyResponseBody>::new(&mut r.inner, r.limits.clone())
@@ -49399,6 +54275,10 @@ impl Type {
                 ReadXdrIter::<_, CreateContractArgs>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::CreateContractArgs(Box::new(t)))),
             ),
+            TypeVariant::CreateContractArgsV2 => Box::new(
+                ReadXdrIter::<_, CreateContractArgsV2>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::CreateContractArgsV2(Box::new(t)))),
+            ),
             TypeVariant::InvokeContractArgs => Box::new(
                 ReadXdrIter::<_, InvokeContractArgs>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::InvokeContractArgs(Box::new(t)))),
@@ -49513,6 +54393,34 @@ impl Type {
                 ReadXdrIter::<_, LedgerFootprint>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::LedgerFootprint(Box::new(t)))),
             ),
+            TypeVariant::ArchivalProofType => Box::new(
+                ReadXdrIter::<_, ArchivalProofType>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofType(Box::new(t)))),
+            ),
+            TypeVariant::ArchivalProofNode => Box::new(
+                ReadXdrIter::<_, ArchivalProofNode>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofNode(Box::new(t)))),
+            ),
+            TypeVariant::ProofLevel => Box::new(
+                ReadXdrIter::<_, ProofLevel>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ProofLevel(Box::new(t)))),
+            ),
+            TypeVariant::NonexistenceProofBody => Box::new(
+                ReadXdrIter::<_, NonexistenceProofBody>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::NonexistenceProofBody(Box::new(t)))),
+            ),
+            TypeVariant::ExistenceProofBody => Box::new(
+                ReadXdrIter::<_, ExistenceProofBody>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ExistenceProofBody(Box::new(t)))),
+            ),
+            TypeVariant::ArchivalProof => Box::new(
+                ReadXdrIter::<_, ArchivalProof>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProof(Box::new(t)))),
+            ),
+            TypeVariant::ArchivalProofBody => Box::new(
+                ReadXdrIter::<_, ArchivalProofBody>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofBody(Box::new(t)))),
+            ),
             TypeVariant::SorobanResources => Box::new(
                 ReadXdrIter::<_, SorobanResources>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SorobanResources(Box::new(t)))),
@@ -49520,6 +54428,10 @@ impl Type {
             TypeVariant::SorobanTransactionData => Box::new(
                 ReadXdrIter::<_, SorobanTransactionData>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SorobanTransactionData(Box::new(t)))),
+            ),
+            TypeVariant::SorobanTransactionDataExt => Box::new(
+                ReadXdrIter::<_, SorobanTransactionDataExt>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::SorobanTransactionDataExt(Box::new(t)))),
             ),
             TypeVariant::TransactionV0 => Box::new(
                 ReadXdrIter::<_, TransactionV0>::new(&mut r.inner, r.limits.clone())
@@ -50021,6 +54933,18 @@ impl Type {
                 ReadXdrIter::<_, HmacSha256Mac>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::HmacSha256Mac(Box::new(t)))),
             ),
+            TypeVariant::ShortHashSeed => Box::new(
+                ReadXdrIter::<_, ShortHashSeed>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ShortHashSeed(Box::new(t)))),
+            ),
+            TypeVariant::BinaryFuseFilterType => Box::new(
+                ReadXdrIter::<_, BinaryFuseFilterType>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BinaryFuseFilterType(Box::new(t)))),
+            ),
+            TypeVariant::SerializedBinaryFuseFilter => Box::new(
+                ReadXdrIter::<_, SerializedBinaryFuseFilter>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::SerializedBinaryFuseFilter(Box::new(t)))),
+            ),
         }
     }
 
@@ -50091,6 +55015,13 @@ impl Type {
                     r.limits.clone(),
                 )
                 .map(|r| r.map(|t| Self::ConfigSettingContractComputeV0(Box::new(t.0)))),
+            ),
+            TypeVariant::ConfigSettingContractParallelComputeV0 => Box::new(
+                ReadXdrIter::<_, Frame<ConfigSettingContractParallelComputeV0>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ConfigSettingContractParallelComputeV0(Box::new(t.0)))),
             ),
             TypeVariant::ConfigSettingContractLedgerCostV0 => Box::new(
                 ReadXdrIter::<_, Frame<ConfigSettingContractLedgerCostV0>>::new(
@@ -50779,6 +55710,76 @@ impl Type {
                 ReadXdrIter::<_, Frame<EnvelopeType>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::EnvelopeType(Box::new(t.0)))),
             ),
+            TypeVariant::BucketListType => Box::new(
+                ReadXdrIter::<_, Frame<BucketListType>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketListType(Box::new(t.0)))),
+            ),
+            TypeVariant::BucketEntryType => Box::new(
+                ReadXdrIter::<_, Frame<BucketEntryType>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketEntryType(Box::new(t.0)))),
+            ),
+            TypeVariant::HotArchiveBucketEntryType => Box::new(
+                ReadXdrIter::<_, Frame<HotArchiveBucketEntryType>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::HotArchiveBucketEntryType(Box::new(t.0)))),
+            ),
+            TypeVariant::ColdArchiveBucketEntryType => Box::new(
+                ReadXdrIter::<_, Frame<ColdArchiveBucketEntryType>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ColdArchiveBucketEntryType(Box::new(t.0)))),
+            ),
+            TypeVariant::BucketMetadata => Box::new(
+                ReadXdrIter::<_, Frame<BucketMetadata>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketMetadata(Box::new(t.0)))),
+            ),
+            TypeVariant::BucketMetadataExt => Box::new(
+                ReadXdrIter::<_, Frame<BucketMetadataExt>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketMetadataExt(Box::new(t.0)))),
+            ),
+            TypeVariant::BucketEntry => Box::new(
+                ReadXdrIter::<_, Frame<BucketEntry>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketEntry(Box::new(t.0)))),
+            ),
+            TypeVariant::HotArchiveBucketEntry => Box::new(
+                ReadXdrIter::<_, Frame<HotArchiveBucketEntry>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::HotArchiveBucketEntry(Box::new(t.0)))),
+            ),
+            TypeVariant::ColdArchiveArchivedLeaf => Box::new(
+                ReadXdrIter::<_, Frame<ColdArchiveArchivedLeaf>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ColdArchiveArchivedLeaf(Box::new(t.0)))),
+            ),
+            TypeVariant::ColdArchiveDeletedLeaf => Box::new(
+                ReadXdrIter::<_, Frame<ColdArchiveDeletedLeaf>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ColdArchiveDeletedLeaf(Box::new(t.0)))),
+            ),
+            TypeVariant::ColdArchiveBoundaryLeaf => Box::new(
+                ReadXdrIter::<_, Frame<ColdArchiveBoundaryLeaf>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ColdArchiveBoundaryLeaf(Box::new(t.0)))),
+            ),
+            TypeVariant::ColdArchiveHashEntry => Box::new(
+                ReadXdrIter::<_, Frame<ColdArchiveHashEntry>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveHashEntry(Box::new(t.0)))),
+            ),
+            TypeVariant::ColdArchiveBucketEntry => Box::new(
+                ReadXdrIter::<_, Frame<ColdArchiveBucketEntry>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ColdArchiveBucketEntry(Box::new(t.0)))),
+            ),
             TypeVariant::UpgradeType => Box::new(
                 ReadXdrIter::<_, Frame<UpgradeType>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::UpgradeType(Box::new(t.0)))),
@@ -50844,25 +55845,24 @@ impl Type {
                 ReadXdrIter::<_, Frame<ConfigUpgradeSet>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::ConfigUpgradeSet(Box::new(t.0)))),
             ),
-            TypeVariant::BucketEntryType => Box::new(
-                ReadXdrIter::<_, Frame<BucketEntryType>>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketEntryType(Box::new(t.0)))),
-            ),
-            TypeVariant::BucketMetadata => Box::new(
-                ReadXdrIter::<_, Frame<BucketMetadata>>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketMetadata(Box::new(t.0)))),
-            ),
-            TypeVariant::BucketMetadataExt => Box::new(
-                ReadXdrIter::<_, Frame<BucketMetadataExt>>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketMetadataExt(Box::new(t.0)))),
-            ),
-            TypeVariant::BucketEntry => Box::new(
-                ReadXdrIter::<_, Frame<BucketEntry>>::new(&mut r.inner, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketEntry(Box::new(t.0)))),
-            ),
             TypeVariant::TxSetComponentType => Box::new(
                 ReadXdrIter::<_, Frame<TxSetComponentType>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::TxSetComponentType(Box::new(t.0)))),
+            ),
+            TypeVariant::TxExecutionThread => Box::new(
+                ReadXdrIter::<_, Frame<TxExecutionThread>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TxExecutionThread(Box::new(t.0)))),
+            ),
+            TypeVariant::ParallelTxExecutionStage => Box::new(
+                ReadXdrIter::<_, Frame<ParallelTxExecutionStage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ParallelTxExecutionStage(Box::new(t.0)))),
+            ),
+            TypeVariant::ParallelTxsComponent => Box::new(
+                ReadXdrIter::<_, Frame<ParallelTxsComponent>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ParallelTxsComponent(Box::new(t.0)))),
             ),
             TypeVariant::TxSetComponent => Box::new(
                 ReadXdrIter::<_, Frame<TxSetComponent>>::new(&mut r.inner, r.limits.clone())
@@ -51126,9 +56126,48 @@ impl Type {
                 )
                 .map(|r| r.map(|t| Self::SurveyMessageResponseType(Box::new(t.0)))),
             ),
+            TypeVariant::TimeSlicedSurveyStartCollectingMessage => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedSurveyStartCollectingMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyStartCollectingMessage(Box::new(t.0)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage => Box::new(
+                ReadXdrIter::<_, Frame<SignedTimeSlicedSurveyStartCollectingMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| {
+                    r.map(|t| Self::SignedTimeSlicedSurveyStartCollectingMessage(Box::new(t.0)))
+                }),
+            ),
+            TypeVariant::TimeSlicedSurveyStopCollectingMessage => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedSurveyStopCollectingMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyStopCollectingMessage(Box::new(t.0)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage => Box::new(
+                ReadXdrIter::<_, Frame<SignedTimeSlicedSurveyStopCollectingMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| {
+                    r.map(|t| Self::SignedTimeSlicedSurveyStopCollectingMessage(Box::new(t.0)))
+                }),
+            ),
             TypeVariant::SurveyRequestMessage => Box::new(
                 ReadXdrIter::<_, Frame<SurveyRequestMessage>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyRequestMessage(Box::new(t.0)))),
+            ),
+            TypeVariant::TimeSlicedSurveyRequestMessage => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedSurveyRequestMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyRequestMessage(Box::new(t.0)))),
             ),
             TypeVariant::SignedSurveyRequestMessage => Box::new(
                 ReadXdrIter::<_, Frame<SignedSurveyRequestMessage>>::new(
@@ -51136,6 +56175,13 @@ impl Type {
                     r.limits.clone(),
                 )
                 .map(|r| r.map(|t| Self::SignedSurveyRequestMessage(Box::new(t.0)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyRequestMessage => Box::new(
+                ReadXdrIter::<_, Frame<SignedTimeSlicedSurveyRequestMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyRequestMessage(Box::new(t.0)))),
             ),
             TypeVariant::EncryptedBody => Box::new(
                 ReadXdrIter::<_, Frame<EncryptedBody>>::new(&mut r.inner, r.limits.clone())
@@ -51145,12 +56191,26 @@ impl Type {
                 ReadXdrIter::<_, Frame<SurveyResponseMessage>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyResponseMessage(Box::new(t.0)))),
             ),
+            TypeVariant::TimeSlicedSurveyResponseMessage => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedSurveyResponseMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyResponseMessage(Box::new(t.0)))),
+            ),
             TypeVariant::SignedSurveyResponseMessage => Box::new(
                 ReadXdrIter::<_, Frame<SignedSurveyResponseMessage>>::new(
                     &mut r.inner,
                     r.limits.clone(),
                 )
                 .map(|r| r.map(|t| Self::SignedSurveyResponseMessage(Box::new(t.0)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyResponseMessage => Box::new(
+                ReadXdrIter::<_, Frame<SignedTimeSlicedSurveyResponseMessage>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyResponseMessage(Box::new(t.0)))),
             ),
             TypeVariant::PeerStats => Box::new(
                 ReadXdrIter::<_, Frame<PeerStats>>::new(&mut r.inner, r.limits.clone())
@@ -51159,6 +56219,21 @@ impl Type {
             TypeVariant::PeerStatList => Box::new(
                 ReadXdrIter::<_, Frame<PeerStatList>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::PeerStatList(Box::new(t.0)))),
+            ),
+            TypeVariant::TimeSlicedNodeData => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedNodeData>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedNodeData(Box::new(t.0)))),
+            ),
+            TypeVariant::TimeSlicedPeerData => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedPeerData>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedPeerData(Box::new(t.0)))),
+            ),
+            TypeVariant::TimeSlicedPeerDataList => Box::new(
+                ReadXdrIter::<_, Frame<TimeSlicedPeerDataList>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedPeerDataList(Box::new(t.0)))),
             ),
             TypeVariant::TopologyResponseBodyV0 => Box::new(
                 ReadXdrIter::<_, Frame<TopologyResponseBodyV0>>::new(
@@ -51173,6 +56248,13 @@ impl Type {
                     r.limits.clone(),
                 )
                 .map(|r| r.map(|t| Self::TopologyResponseBodyV1(Box::new(t.0)))),
+            ),
+            TypeVariant::TopologyResponseBodyV2 => Box::new(
+                ReadXdrIter::<_, Frame<TopologyResponseBodyV2>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TopologyResponseBodyV2(Box::new(t.0)))),
             ),
             TypeVariant::SurveyResponseBody => Box::new(
                 ReadXdrIter::<_, Frame<SurveyResponseBody>>::new(&mut r.inner, r.limits.clone())
@@ -51384,6 +56466,10 @@ impl Type {
                 ReadXdrIter::<_, Frame<CreateContractArgs>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::CreateContractArgs(Box::new(t.0)))),
             ),
+            TypeVariant::CreateContractArgsV2 => Box::new(
+                ReadXdrIter::<_, Frame<CreateContractArgsV2>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::CreateContractArgsV2(Box::new(t.0)))),
+            ),
             TypeVariant::InvokeContractArgs => Box::new(
                 ReadXdrIter::<_, Frame<InvokeContractArgs>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::InvokeContractArgs(Box::new(t.0)))),
@@ -51522,6 +56608,34 @@ impl Type {
                 ReadXdrIter::<_, Frame<LedgerFootprint>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::LedgerFootprint(Box::new(t.0)))),
             ),
+            TypeVariant::ArchivalProofType => Box::new(
+                ReadXdrIter::<_, Frame<ArchivalProofType>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofType(Box::new(t.0)))),
+            ),
+            TypeVariant::ArchivalProofNode => Box::new(
+                ReadXdrIter::<_, Frame<ArchivalProofNode>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofNode(Box::new(t.0)))),
+            ),
+            TypeVariant::ProofLevel => Box::new(
+                ReadXdrIter::<_, Frame<ProofLevel>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ProofLevel(Box::new(t.0)))),
+            ),
+            TypeVariant::NonexistenceProofBody => Box::new(
+                ReadXdrIter::<_, Frame<NonexistenceProofBody>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::NonexistenceProofBody(Box::new(t.0)))),
+            ),
+            TypeVariant::ExistenceProofBody => Box::new(
+                ReadXdrIter::<_, Frame<ExistenceProofBody>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ExistenceProofBody(Box::new(t.0)))),
+            ),
+            TypeVariant::ArchivalProof => Box::new(
+                ReadXdrIter::<_, Frame<ArchivalProof>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProof(Box::new(t.0)))),
+            ),
+            TypeVariant::ArchivalProofBody => Box::new(
+                ReadXdrIter::<_, Frame<ArchivalProofBody>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofBody(Box::new(t.0)))),
+            ),
             TypeVariant::SorobanResources => Box::new(
                 ReadXdrIter::<_, Frame<SorobanResources>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::SorobanResources(Box::new(t.0)))),
@@ -51532,6 +56646,13 @@ impl Type {
                     r.limits.clone(),
                 )
                 .map(|r| r.map(|t| Self::SorobanTransactionData(Box::new(t.0)))),
+            ),
+            TypeVariant::SorobanTransactionDataExt => Box::new(
+                ReadXdrIter::<_, Frame<SorobanTransactionDataExt>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SorobanTransactionDataExt(Box::new(t.0)))),
             ),
             TypeVariant::TransactionV0 => Box::new(
                 ReadXdrIter::<_, Frame<TransactionV0>>::new(&mut r.inner, r.limits.clone())
@@ -52120,6 +57241,21 @@ impl Type {
                 ReadXdrIter::<_, Frame<HmacSha256Mac>>::new(&mut r.inner, r.limits.clone())
                     .map(|r| r.map(|t| Self::HmacSha256Mac(Box::new(t.0)))),
             ),
+            TypeVariant::ShortHashSeed => Box::new(
+                ReadXdrIter::<_, Frame<ShortHashSeed>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ShortHashSeed(Box::new(t.0)))),
+            ),
+            TypeVariant::BinaryFuseFilterType => Box::new(
+                ReadXdrIter::<_, Frame<BinaryFuseFilterType>>::new(&mut r.inner, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BinaryFuseFilterType(Box::new(t.0)))),
+            ),
+            TypeVariant::SerializedBinaryFuseFilter => Box::new(
+                ReadXdrIter::<_, Frame<SerializedBinaryFuseFilter>>::new(
+                    &mut r.inner,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SerializedBinaryFuseFilter(Box::new(t.0)))),
+            ),
         }
     }
 
@@ -52182,6 +57318,13 @@ impl Type {
             TypeVariant::ConfigSettingContractComputeV0 => Box::new(
                 ReadXdrIter::<_, ConfigSettingContractComputeV0>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::ConfigSettingContractComputeV0(Box::new(t)))),
+            ),
+            TypeVariant::ConfigSettingContractParallelComputeV0 => Box::new(
+                ReadXdrIter::<_, ConfigSettingContractParallelComputeV0>::new(
+                    dec,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::ConfigSettingContractParallelComputeV0(Box::new(t)))),
             ),
             TypeVariant::ConfigSettingContractLedgerCostV0 => Box::new(
                 ReadXdrIter::<_, ConfigSettingContractLedgerCostV0>::new(dec, r.limits.clone())
@@ -52774,6 +57917,58 @@ impl Type {
                 ReadXdrIter::<_, EnvelopeType>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::EnvelopeType(Box::new(t)))),
             ),
+            TypeVariant::BucketListType => Box::new(
+                ReadXdrIter::<_, BucketListType>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketListType(Box::new(t)))),
+            ),
+            TypeVariant::BucketEntryType => Box::new(
+                ReadXdrIter::<_, BucketEntryType>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketEntryType(Box::new(t)))),
+            ),
+            TypeVariant::HotArchiveBucketEntryType => Box::new(
+                ReadXdrIter::<_, HotArchiveBucketEntryType>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::HotArchiveBucketEntryType(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveBucketEntryType => Box::new(
+                ReadXdrIter::<_, ColdArchiveBucketEntryType>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveBucketEntryType(Box::new(t)))),
+            ),
+            TypeVariant::BucketMetadata => Box::new(
+                ReadXdrIter::<_, BucketMetadata>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketMetadata(Box::new(t)))),
+            ),
+            TypeVariant::BucketMetadataExt => Box::new(
+                ReadXdrIter::<_, BucketMetadataExt>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketMetadataExt(Box::new(t)))),
+            ),
+            TypeVariant::BucketEntry => Box::new(
+                ReadXdrIter::<_, BucketEntry>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BucketEntry(Box::new(t)))),
+            ),
+            TypeVariant::HotArchiveBucketEntry => Box::new(
+                ReadXdrIter::<_, HotArchiveBucketEntry>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::HotArchiveBucketEntry(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveArchivedLeaf => Box::new(
+                ReadXdrIter::<_, ColdArchiveArchivedLeaf>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveArchivedLeaf(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveDeletedLeaf => Box::new(
+                ReadXdrIter::<_, ColdArchiveDeletedLeaf>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveDeletedLeaf(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveBoundaryLeaf => Box::new(
+                ReadXdrIter::<_, ColdArchiveBoundaryLeaf>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveBoundaryLeaf(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveHashEntry => Box::new(
+                ReadXdrIter::<_, ColdArchiveHashEntry>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveHashEntry(Box::new(t)))),
+            ),
+            TypeVariant::ColdArchiveBucketEntry => Box::new(
+                ReadXdrIter::<_, ColdArchiveBucketEntry>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ColdArchiveBucketEntry(Box::new(t)))),
+            ),
             TypeVariant::UpgradeType => Box::new(
                 ReadXdrIter::<_, UpgradeType>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::UpgradeType(Box::new(t)))),
@@ -52830,25 +58025,21 @@ impl Type {
                 ReadXdrIter::<_, ConfigUpgradeSet>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::ConfigUpgradeSet(Box::new(t)))),
             ),
-            TypeVariant::BucketEntryType => Box::new(
-                ReadXdrIter::<_, BucketEntryType>::new(dec, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketEntryType(Box::new(t)))),
-            ),
-            TypeVariant::BucketMetadata => Box::new(
-                ReadXdrIter::<_, BucketMetadata>::new(dec, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketMetadata(Box::new(t)))),
-            ),
-            TypeVariant::BucketMetadataExt => Box::new(
-                ReadXdrIter::<_, BucketMetadataExt>::new(dec, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketMetadataExt(Box::new(t)))),
-            ),
-            TypeVariant::BucketEntry => Box::new(
-                ReadXdrIter::<_, BucketEntry>::new(dec, r.limits.clone())
-                    .map(|r| r.map(|t| Self::BucketEntry(Box::new(t)))),
-            ),
             TypeVariant::TxSetComponentType => Box::new(
                 ReadXdrIter::<_, TxSetComponentType>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::TxSetComponentType(Box::new(t)))),
+            ),
+            TypeVariant::TxExecutionThread => Box::new(
+                ReadXdrIter::<_, TxExecutionThread>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TxExecutionThread(Box::new(t)))),
+            ),
+            TypeVariant::ParallelTxExecutionStage => Box::new(
+                ReadXdrIter::<_, ParallelTxExecutionStage>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ParallelTxExecutionStage(Box::new(t)))),
+            ),
+            TypeVariant::ParallelTxsComponent => Box::new(
+                ReadXdrIter::<_, ParallelTxsComponent>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ParallelTxsComponent(Box::new(t)))),
             ),
             TypeVariant::TxSetComponent => Box::new(
                 ReadXdrIter::<_, TxSetComponent>::new(dec, r.limits.clone())
@@ -53070,13 +58261,48 @@ impl Type {
                 ReadXdrIter::<_, SurveyMessageResponseType>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyMessageResponseType(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedSurveyStartCollectingMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyStartCollectingMessage>::new(
+                    dec,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::TimeSlicedSurveyStartCollectingMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyStartCollectingMessage>::new(
+                    dec,
+                    r.limits.clone(),
+                )
+                .map(|r| {
+                    r.map(|t| Self::SignedTimeSlicedSurveyStartCollectingMessage(Box::new(t)))
+                }),
+            ),
+            TypeVariant::TimeSlicedSurveyStopCollectingMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyStopCollectingMessage>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedSurveyStopCollectingMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyStopCollectingMessage>::new(
+                    dec,
+                    r.limits.clone(),
+                )
+                .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyStopCollectingMessage(Box::new(t)))),
+            ),
             TypeVariant::SurveyRequestMessage => Box::new(
                 ReadXdrIter::<_, SurveyRequestMessage>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyRequestMessage(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedSurveyRequestMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyRequestMessage>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedSurveyRequestMessage(Box::new(t)))),
+            ),
             TypeVariant::SignedSurveyRequestMessage => Box::new(
                 ReadXdrIter::<_, SignedSurveyRequestMessage>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SignedSurveyRequestMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyRequestMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyRequestMessage>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyRequestMessage(Box::new(t)))),
             ),
             TypeVariant::EncryptedBody => Box::new(
                 ReadXdrIter::<_, EncryptedBody>::new(dec, r.limits.clone())
@@ -53086,9 +58312,17 @@ impl Type {
                 ReadXdrIter::<_, SurveyResponseMessage>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SurveyResponseMessage(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedSurveyResponseMessage => Box::new(
+                ReadXdrIter::<_, TimeSlicedSurveyResponseMessage>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedSurveyResponseMessage(Box::new(t)))),
+            ),
             TypeVariant::SignedSurveyResponseMessage => Box::new(
                 ReadXdrIter::<_, SignedSurveyResponseMessage>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SignedSurveyResponseMessage(Box::new(t)))),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyResponseMessage => Box::new(
+                ReadXdrIter::<_, SignedTimeSlicedSurveyResponseMessage>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::SignedTimeSlicedSurveyResponseMessage(Box::new(t)))),
             ),
             TypeVariant::PeerStats => Box::new(
                 ReadXdrIter::<_, PeerStats>::new(dec, r.limits.clone())
@@ -53098,6 +58332,18 @@ impl Type {
                 ReadXdrIter::<_, PeerStatList>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::PeerStatList(Box::new(t)))),
             ),
+            TypeVariant::TimeSlicedNodeData => Box::new(
+                ReadXdrIter::<_, TimeSlicedNodeData>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedNodeData(Box::new(t)))),
+            ),
+            TypeVariant::TimeSlicedPeerData => Box::new(
+                ReadXdrIter::<_, TimeSlicedPeerData>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedPeerData(Box::new(t)))),
+            ),
+            TypeVariant::TimeSlicedPeerDataList => Box::new(
+                ReadXdrIter::<_, TimeSlicedPeerDataList>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TimeSlicedPeerDataList(Box::new(t)))),
+            ),
             TypeVariant::TopologyResponseBodyV0 => Box::new(
                 ReadXdrIter::<_, TopologyResponseBodyV0>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::TopologyResponseBodyV0(Box::new(t)))),
@@ -53105,6 +58351,10 @@ impl Type {
             TypeVariant::TopologyResponseBodyV1 => Box::new(
                 ReadXdrIter::<_, TopologyResponseBodyV1>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::TopologyResponseBodyV1(Box::new(t)))),
+            ),
+            TypeVariant::TopologyResponseBodyV2 => Box::new(
+                ReadXdrIter::<_, TopologyResponseBodyV2>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::TopologyResponseBodyV2(Box::new(t)))),
             ),
             TypeVariant::SurveyResponseBody => Box::new(
                 ReadXdrIter::<_, SurveyResponseBody>::new(dec, r.limits.clone())
@@ -53274,6 +58524,10 @@ impl Type {
                 ReadXdrIter::<_, CreateContractArgs>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::CreateContractArgs(Box::new(t)))),
             ),
+            TypeVariant::CreateContractArgsV2 => Box::new(
+                ReadXdrIter::<_, CreateContractArgsV2>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::CreateContractArgsV2(Box::new(t)))),
+            ),
             TypeVariant::InvokeContractArgs => Box::new(
                 ReadXdrIter::<_, InvokeContractArgs>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::InvokeContractArgs(Box::new(t)))),
@@ -53382,6 +58636,34 @@ impl Type {
                 ReadXdrIter::<_, LedgerFootprint>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::LedgerFootprint(Box::new(t)))),
             ),
+            TypeVariant::ArchivalProofType => Box::new(
+                ReadXdrIter::<_, ArchivalProofType>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofType(Box::new(t)))),
+            ),
+            TypeVariant::ArchivalProofNode => Box::new(
+                ReadXdrIter::<_, ArchivalProofNode>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofNode(Box::new(t)))),
+            ),
+            TypeVariant::ProofLevel => Box::new(
+                ReadXdrIter::<_, ProofLevel>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ProofLevel(Box::new(t)))),
+            ),
+            TypeVariant::NonexistenceProofBody => Box::new(
+                ReadXdrIter::<_, NonexistenceProofBody>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::NonexistenceProofBody(Box::new(t)))),
+            ),
+            TypeVariant::ExistenceProofBody => Box::new(
+                ReadXdrIter::<_, ExistenceProofBody>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ExistenceProofBody(Box::new(t)))),
+            ),
+            TypeVariant::ArchivalProof => Box::new(
+                ReadXdrIter::<_, ArchivalProof>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProof(Box::new(t)))),
+            ),
+            TypeVariant::ArchivalProofBody => Box::new(
+                ReadXdrIter::<_, ArchivalProofBody>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ArchivalProofBody(Box::new(t)))),
+            ),
             TypeVariant::SorobanResources => Box::new(
                 ReadXdrIter::<_, SorobanResources>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SorobanResources(Box::new(t)))),
@@ -53389,6 +58671,10 @@ impl Type {
             TypeVariant::SorobanTransactionData => Box::new(
                 ReadXdrIter::<_, SorobanTransactionData>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::SorobanTransactionData(Box::new(t)))),
+            ),
+            TypeVariant::SorobanTransactionDataExt => Box::new(
+                ReadXdrIter::<_, SorobanTransactionDataExt>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::SorobanTransactionDataExt(Box::new(t)))),
             ),
             TypeVariant::TransactionV0 => Box::new(
                 ReadXdrIter::<_, TransactionV0>::new(dec, r.limits.clone())
@@ -53842,6 +59128,18 @@ impl Type {
                 ReadXdrIter::<_, HmacSha256Mac>::new(dec, r.limits.clone())
                     .map(|r| r.map(|t| Self::HmacSha256Mac(Box::new(t)))),
             ),
+            TypeVariant::ShortHashSeed => Box::new(
+                ReadXdrIter::<_, ShortHashSeed>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::ShortHashSeed(Box::new(t)))),
+            ),
+            TypeVariant::BinaryFuseFilterType => Box::new(
+                ReadXdrIter::<_, BinaryFuseFilterType>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::BinaryFuseFilterType(Box::new(t)))),
+            ),
+            TypeVariant::SerializedBinaryFuseFilter => Box::new(
+                ReadXdrIter::<_, SerializedBinaryFuseFilter>::new(dec, r.limits.clone())
+                    .map(|r| r.map(|t| Self::SerializedBinaryFuseFilter(Box::new(t)))),
+            ),
         }
     }
 
@@ -53901,6 +59199,9 @@ impl Type {
             ),
             TypeVariant::ConfigSettingContractComputeV0 => Ok(
                 Self::ConfigSettingContractComputeV0(Box::new(serde_json::from_reader(r)?)),
+            ),
+            TypeVariant::ConfigSettingContractParallelComputeV0 => Ok(
+                Self::ConfigSettingContractParallelComputeV0(Box::new(serde_json::from_reader(r)?)),
             ),
             TypeVariant::ConfigSettingContractLedgerCostV0 => Ok(
                 Self::ConfigSettingContractLedgerCostV0(Box::new(serde_json::from_reader(r)?)),
@@ -54277,6 +59578,45 @@ impl Type {
             TypeVariant::EnvelopeType => {
                 Ok(Self::EnvelopeType(Box::new(serde_json::from_reader(r)?)))
             }
+            TypeVariant::BucketListType => {
+                Ok(Self::BucketListType(Box::new(serde_json::from_reader(r)?)))
+            }
+            TypeVariant::BucketEntryType => {
+                Ok(Self::BucketEntryType(Box::new(serde_json::from_reader(r)?)))
+            }
+            TypeVariant::HotArchiveBucketEntryType => Ok(Self::HotArchiveBucketEntryType(
+                Box::new(serde_json::from_reader(r)?),
+            )),
+            TypeVariant::ColdArchiveBucketEntryType => Ok(Self::ColdArchiveBucketEntryType(
+                Box::new(serde_json::from_reader(r)?),
+            )),
+            TypeVariant::BucketMetadata => {
+                Ok(Self::BucketMetadata(Box::new(serde_json::from_reader(r)?)))
+            }
+            TypeVariant::BucketMetadataExt => Ok(Self::BucketMetadataExt(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::BucketEntry => {
+                Ok(Self::BucketEntry(Box::new(serde_json::from_reader(r)?)))
+            }
+            TypeVariant::HotArchiveBucketEntry => Ok(Self::HotArchiveBucketEntry(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ColdArchiveArchivedLeaf => Ok(Self::ColdArchiveArchivedLeaf(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ColdArchiveDeletedLeaf => Ok(Self::ColdArchiveDeletedLeaf(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ColdArchiveBoundaryLeaf => Ok(Self::ColdArchiveBoundaryLeaf(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ColdArchiveHashEntry => Ok(Self::ColdArchiveHashEntry(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ColdArchiveBucketEntry => Ok(Self::ColdArchiveBucketEntry(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
             TypeVariant::UpgradeType => {
                 Ok(Self::UpgradeType(Box::new(serde_json::from_reader(r)?)))
             }
@@ -54319,19 +59659,16 @@ impl Type {
             TypeVariant::ConfigUpgradeSet => Ok(Self::ConfigUpgradeSet(Box::new(
                 serde_json::from_reader(r)?,
             ))),
-            TypeVariant::BucketEntryType => {
-                Ok(Self::BucketEntryType(Box::new(serde_json::from_reader(r)?)))
-            }
-            TypeVariant::BucketMetadata => {
-                Ok(Self::BucketMetadata(Box::new(serde_json::from_reader(r)?)))
-            }
-            TypeVariant::BucketMetadataExt => Ok(Self::BucketMetadataExt(Box::new(
+            TypeVariant::TxSetComponentType => Ok(Self::TxSetComponentType(Box::new(
                 serde_json::from_reader(r)?,
             ))),
-            TypeVariant::BucketEntry => {
-                Ok(Self::BucketEntry(Box::new(serde_json::from_reader(r)?)))
-            }
-            TypeVariant::TxSetComponentType => Ok(Self::TxSetComponentType(Box::new(
+            TypeVariant::TxExecutionThread => Ok(Self::TxExecutionThread(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ParallelTxExecutionStage => Ok(Self::ParallelTxExecutionStage(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ParallelTxsComponent => Ok(Self::ParallelTxsComponent(Box::new(
                 serde_json::from_reader(r)?,
             ))),
             TypeVariant::TxSetComponent => {
@@ -54483,29 +59820,69 @@ impl Type {
             TypeVariant::SurveyMessageResponseType => Ok(Self::SurveyMessageResponseType(
                 Box::new(serde_json::from_reader(r)?),
             )),
+            TypeVariant::TimeSlicedSurveyStartCollectingMessage => Ok(
+                Self::TimeSlicedSurveyStartCollectingMessage(Box::new(serde_json::from_reader(r)?)),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage => {
+                Ok(Self::SignedTimeSlicedSurveyStartCollectingMessage(
+                    Box::new(serde_json::from_reader(r)?),
+                ))
+            }
+            TypeVariant::TimeSlicedSurveyStopCollectingMessage => Ok(
+                Self::TimeSlicedSurveyStopCollectingMessage(Box::new(serde_json::from_reader(r)?)),
+            ),
+            TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage => {
+                Ok(Self::SignedTimeSlicedSurveyStopCollectingMessage(Box::new(
+                    serde_json::from_reader(r)?,
+                )))
+            }
             TypeVariant::SurveyRequestMessage => Ok(Self::SurveyRequestMessage(Box::new(
                 serde_json::from_reader(r)?,
             ))),
+            TypeVariant::TimeSlicedSurveyRequestMessage => Ok(
+                Self::TimeSlicedSurveyRequestMessage(Box::new(serde_json::from_reader(r)?)),
+            ),
             TypeVariant::SignedSurveyRequestMessage => Ok(Self::SignedSurveyRequestMessage(
                 Box::new(serde_json::from_reader(r)?),
             )),
+            TypeVariant::SignedTimeSlicedSurveyRequestMessage => Ok(
+                Self::SignedTimeSlicedSurveyRequestMessage(Box::new(serde_json::from_reader(r)?)),
+            ),
             TypeVariant::EncryptedBody => {
                 Ok(Self::EncryptedBody(Box::new(serde_json::from_reader(r)?)))
             }
             TypeVariant::SurveyResponseMessage => Ok(Self::SurveyResponseMessage(Box::new(
                 serde_json::from_reader(r)?,
             ))),
+            TypeVariant::TimeSlicedSurveyResponseMessage => Ok(
+                Self::TimeSlicedSurveyResponseMessage(Box::new(serde_json::from_reader(r)?)),
+            ),
             TypeVariant::SignedSurveyResponseMessage => Ok(Self::SignedSurveyResponseMessage(
                 Box::new(serde_json::from_reader(r)?),
             )),
+            TypeVariant::SignedTimeSlicedSurveyResponseMessage => Ok(
+                Self::SignedTimeSlicedSurveyResponseMessage(Box::new(serde_json::from_reader(r)?)),
+            ),
             TypeVariant::PeerStats => Ok(Self::PeerStats(Box::new(serde_json::from_reader(r)?))),
             TypeVariant::PeerStatList => {
                 Ok(Self::PeerStatList(Box::new(serde_json::from_reader(r)?)))
             }
+            TypeVariant::TimeSlicedNodeData => Ok(Self::TimeSlicedNodeData(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::TimeSlicedPeerData => Ok(Self::TimeSlicedPeerData(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::TimeSlicedPeerDataList => Ok(Self::TimeSlicedPeerDataList(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
             TypeVariant::TopologyResponseBodyV0 => Ok(Self::TopologyResponseBodyV0(Box::new(
                 serde_json::from_reader(r)?,
             ))),
             TypeVariant::TopologyResponseBodyV1 => Ok(Self::TopologyResponseBodyV1(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::TopologyResponseBodyV2 => Ok(Self::TopologyResponseBodyV2(Box::new(
                 serde_json::from_reader(r)?,
             ))),
             TypeVariant::SurveyResponseBody => Ok(Self::SurveyResponseBody(Box::new(
@@ -54630,6 +60007,9 @@ impl Type {
             TypeVariant::CreateContractArgs => Ok(Self::CreateContractArgs(Box::new(
                 serde_json::from_reader(r)?,
             ))),
+            TypeVariant::CreateContractArgsV2 => Ok(Self::CreateContractArgsV2(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
             TypeVariant::InvokeContractArgs => Ok(Self::InvokeContractArgs(Box::new(
                 serde_json::from_reader(r)?,
             ))),
@@ -54703,12 +60083,34 @@ impl Type {
             TypeVariant::LedgerFootprint => {
                 Ok(Self::LedgerFootprint(Box::new(serde_json::from_reader(r)?)))
             }
+            TypeVariant::ArchivalProofType => Ok(Self::ArchivalProofType(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ArchivalProofNode => Ok(Self::ArchivalProofNode(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ProofLevel => Ok(Self::ProofLevel(Box::new(serde_json::from_reader(r)?))),
+            TypeVariant::NonexistenceProofBody => Ok(Self::NonexistenceProofBody(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ExistenceProofBody => Ok(Self::ExistenceProofBody(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::ArchivalProof => {
+                Ok(Self::ArchivalProof(Box::new(serde_json::from_reader(r)?)))
+            }
+            TypeVariant::ArchivalProofBody => Ok(Self::ArchivalProofBody(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
             TypeVariant::SorobanResources => Ok(Self::SorobanResources(Box::new(
                 serde_json::from_reader(r)?,
             ))),
             TypeVariant::SorobanTransactionData => Ok(Self::SorobanTransactionData(Box::new(
                 serde_json::from_reader(r)?,
             ))),
+            TypeVariant::SorobanTransactionDataExt => Ok(Self::SorobanTransactionDataExt(
+                Box::new(serde_json::from_reader(r)?),
+            )),
             TypeVariant::TransactionV0 => {
                 Ok(Self::TransactionV0(Box::new(serde_json::from_reader(r)?)))
             }
@@ -55018,6 +60420,15 @@ impl Type {
             TypeVariant::HmacSha256Mac => {
                 Ok(Self::HmacSha256Mac(Box::new(serde_json::from_reader(r)?)))
             }
+            TypeVariant::ShortHashSeed => {
+                Ok(Self::ShortHashSeed(Box::new(serde_json::from_reader(r)?)))
+            }
+            TypeVariant::BinaryFuseFilterType => Ok(Self::BinaryFuseFilterType(Box::new(
+                serde_json::from_reader(r)?,
+            ))),
+            TypeVariant::SerializedBinaryFuseFilter => Ok(Self::SerializedBinaryFuseFilter(
+                Box::new(serde_json::from_reader(r)?),
+            )),
         }
     }
 
@@ -55040,6 +60451,7 @@ impl Type {
             Self::ScpQuorumSet(ref v) => v.as_ref(),
             Self::ConfigSettingContractExecutionLanesV0(ref v) => v.as_ref(),
             Self::ConfigSettingContractComputeV0(ref v) => v.as_ref(),
+            Self::ConfigSettingContractParallelComputeV0(ref v) => v.as_ref(),
             Self::ConfigSettingContractLedgerCostV0(ref v) => v.as_ref(),
             Self::ConfigSettingContractHistoricalDataV0(ref v) => v.as_ref(),
             Self::ConfigSettingContractEventsV0(ref v) => v.as_ref(),
@@ -55187,6 +60599,19 @@ impl Type {
             Self::LedgerKeyConfigSetting(ref v) => v.as_ref(),
             Self::LedgerKeyTtl(ref v) => v.as_ref(),
             Self::EnvelopeType(ref v) => v.as_ref(),
+            Self::BucketListType(ref v) => v.as_ref(),
+            Self::BucketEntryType(ref v) => v.as_ref(),
+            Self::HotArchiveBucketEntryType(ref v) => v.as_ref(),
+            Self::ColdArchiveBucketEntryType(ref v) => v.as_ref(),
+            Self::BucketMetadata(ref v) => v.as_ref(),
+            Self::BucketMetadataExt(ref v) => v.as_ref(),
+            Self::BucketEntry(ref v) => v.as_ref(),
+            Self::HotArchiveBucketEntry(ref v) => v.as_ref(),
+            Self::ColdArchiveArchivedLeaf(ref v) => v.as_ref(),
+            Self::ColdArchiveDeletedLeaf(ref v) => v.as_ref(),
+            Self::ColdArchiveBoundaryLeaf(ref v) => v.as_ref(),
+            Self::ColdArchiveHashEntry(ref v) => v.as_ref(),
+            Self::ColdArchiveBucketEntry(ref v) => v.as_ref(),
             Self::UpgradeType(ref v) => v.as_ref(),
             Self::StellarValueType(ref v) => v.as_ref(),
             Self::LedgerCloseValueSignature(ref v) => v.as_ref(),
@@ -55201,11 +60626,10 @@ impl Type {
             Self::ConfigUpgradeSetKey(ref v) => v.as_ref(),
             Self::LedgerUpgrade(ref v) => v.as_ref(),
             Self::ConfigUpgradeSet(ref v) => v.as_ref(),
-            Self::BucketEntryType(ref v) => v.as_ref(),
-            Self::BucketMetadata(ref v) => v.as_ref(),
-            Self::BucketMetadataExt(ref v) => v.as_ref(),
-            Self::BucketEntry(ref v) => v.as_ref(),
             Self::TxSetComponentType(ref v) => v.as_ref(),
+            Self::TxExecutionThread(ref v) => v.as_ref(),
+            Self::ParallelTxExecutionStage(ref v) => v.as_ref(),
+            Self::ParallelTxsComponent(ref v) => v.as_ref(),
             Self::TxSetComponent(ref v) => v.as_ref(),
             Self::TxSetComponentTxsMaybeDiscountedFee(ref v) => v.as_ref(),
             Self::TransactionPhase(ref v) => v.as_ref(),
@@ -55261,15 +60685,27 @@ impl Type {
             Self::DontHave(ref v) => v.as_ref(),
             Self::SurveyMessageCommandType(ref v) => v.as_ref(),
             Self::SurveyMessageResponseType(ref v) => v.as_ref(),
+            Self::TimeSlicedSurveyStartCollectingMessage(ref v) => v.as_ref(),
+            Self::SignedTimeSlicedSurveyStartCollectingMessage(ref v) => v.as_ref(),
+            Self::TimeSlicedSurveyStopCollectingMessage(ref v) => v.as_ref(),
+            Self::SignedTimeSlicedSurveyStopCollectingMessage(ref v) => v.as_ref(),
             Self::SurveyRequestMessage(ref v) => v.as_ref(),
+            Self::TimeSlicedSurveyRequestMessage(ref v) => v.as_ref(),
             Self::SignedSurveyRequestMessage(ref v) => v.as_ref(),
+            Self::SignedTimeSlicedSurveyRequestMessage(ref v) => v.as_ref(),
             Self::EncryptedBody(ref v) => v.as_ref(),
             Self::SurveyResponseMessage(ref v) => v.as_ref(),
+            Self::TimeSlicedSurveyResponseMessage(ref v) => v.as_ref(),
             Self::SignedSurveyResponseMessage(ref v) => v.as_ref(),
+            Self::SignedTimeSlicedSurveyResponseMessage(ref v) => v.as_ref(),
             Self::PeerStats(ref v) => v.as_ref(),
             Self::PeerStatList(ref v) => v.as_ref(),
+            Self::TimeSlicedNodeData(ref v) => v.as_ref(),
+            Self::TimeSlicedPeerData(ref v) => v.as_ref(),
+            Self::TimeSlicedPeerDataList(ref v) => v.as_ref(),
             Self::TopologyResponseBodyV0(ref v) => v.as_ref(),
             Self::TopologyResponseBodyV1(ref v) => v.as_ref(),
+            Self::TopologyResponseBodyV2(ref v) => v.as_ref(),
             Self::SurveyResponseBody(ref v) => v.as_ref(),
             Self::TxAdvertVector(ref v) => v.as_ref(),
             Self::FloodAdvert(ref v) => v.as_ref(),
@@ -55312,6 +60748,7 @@ impl Type {
             Self::ContractIdPreimage(ref v) => v.as_ref(),
             Self::ContractIdPreimageFromAddress(ref v) => v.as_ref(),
             Self::CreateContractArgs(ref v) => v.as_ref(),
+            Self::CreateContractArgsV2(ref v) => v.as_ref(),
             Self::InvokeContractArgs(ref v) => v.as_ref(),
             Self::HostFunction(ref v) => v.as_ref(),
             Self::SorobanAuthorizedFunctionType(ref v) => v.as_ref(),
@@ -55339,8 +60776,16 @@ impl Type {
             Self::PreconditionType(ref v) => v.as_ref(),
             Self::Preconditions(ref v) => v.as_ref(),
             Self::LedgerFootprint(ref v) => v.as_ref(),
+            Self::ArchivalProofType(ref v) => v.as_ref(),
+            Self::ArchivalProofNode(ref v) => v.as_ref(),
+            Self::ProofLevel(ref v) => v.as_ref(),
+            Self::NonexistenceProofBody(ref v) => v.as_ref(),
+            Self::ExistenceProofBody(ref v) => v.as_ref(),
+            Self::ArchivalProof(ref v) => v.as_ref(),
+            Self::ArchivalProofBody(ref v) => v.as_ref(),
             Self::SorobanResources(ref v) => v.as_ref(),
             Self::SorobanTransactionData(ref v) => v.as_ref(),
+            Self::SorobanTransactionDataExt(ref v) => v.as_ref(),
             Self::TransactionV0(ref v) => v.as_ref(),
             Self::TransactionV0Ext(ref v) => v.as_ref(),
             Self::TransactionV0Envelope(ref v) => v.as_ref(),
@@ -55452,6 +60897,9 @@ impl Type {
             Self::Curve25519Public(ref v) => v.as_ref(),
             Self::HmacSha256Key(ref v) => v.as_ref(),
             Self::HmacSha256Mac(ref v) => v.as_ref(),
+            Self::ShortHashSeed(ref v) => v.as_ref(),
+            Self::BinaryFuseFilterType(ref v) => v.as_ref(),
+            Self::SerializedBinaryFuseFilter(ref v) => v.as_ref(),
         }
     }
 
@@ -55474,6 +60922,9 @@ impl Type {
                 "ConfigSettingContractExecutionLanesV0"
             }
             Self::ConfigSettingContractComputeV0(_) => "ConfigSettingContractComputeV0",
+            Self::ConfigSettingContractParallelComputeV0(_) => {
+                "ConfigSettingContractParallelComputeV0"
+            }
             Self::ConfigSettingContractLedgerCostV0(_) => "ConfigSettingContractLedgerCostV0",
             Self::ConfigSettingContractHistoricalDataV0(_) => {
                 "ConfigSettingContractHistoricalDataV0"
@@ -55625,6 +61076,19 @@ impl Type {
             Self::LedgerKeyConfigSetting(_) => "LedgerKeyConfigSetting",
             Self::LedgerKeyTtl(_) => "LedgerKeyTtl",
             Self::EnvelopeType(_) => "EnvelopeType",
+            Self::BucketListType(_) => "BucketListType",
+            Self::BucketEntryType(_) => "BucketEntryType",
+            Self::HotArchiveBucketEntryType(_) => "HotArchiveBucketEntryType",
+            Self::ColdArchiveBucketEntryType(_) => "ColdArchiveBucketEntryType",
+            Self::BucketMetadata(_) => "BucketMetadata",
+            Self::BucketMetadataExt(_) => "BucketMetadataExt",
+            Self::BucketEntry(_) => "BucketEntry",
+            Self::HotArchiveBucketEntry(_) => "HotArchiveBucketEntry",
+            Self::ColdArchiveArchivedLeaf(_) => "ColdArchiveArchivedLeaf",
+            Self::ColdArchiveDeletedLeaf(_) => "ColdArchiveDeletedLeaf",
+            Self::ColdArchiveBoundaryLeaf(_) => "ColdArchiveBoundaryLeaf",
+            Self::ColdArchiveHashEntry(_) => "ColdArchiveHashEntry",
+            Self::ColdArchiveBucketEntry(_) => "ColdArchiveBucketEntry",
             Self::UpgradeType(_) => "UpgradeType",
             Self::StellarValueType(_) => "StellarValueType",
             Self::LedgerCloseValueSignature(_) => "LedgerCloseValueSignature",
@@ -55639,11 +61103,10 @@ impl Type {
             Self::ConfigUpgradeSetKey(_) => "ConfigUpgradeSetKey",
             Self::LedgerUpgrade(_) => "LedgerUpgrade",
             Self::ConfigUpgradeSet(_) => "ConfigUpgradeSet",
-            Self::BucketEntryType(_) => "BucketEntryType",
-            Self::BucketMetadata(_) => "BucketMetadata",
-            Self::BucketMetadataExt(_) => "BucketMetadataExt",
-            Self::BucketEntry(_) => "BucketEntry",
             Self::TxSetComponentType(_) => "TxSetComponentType",
+            Self::TxExecutionThread(_) => "TxExecutionThread",
+            Self::ParallelTxExecutionStage(_) => "ParallelTxExecutionStage",
+            Self::ParallelTxsComponent(_) => "ParallelTxsComponent",
             Self::TxSetComponent(_) => "TxSetComponent",
             Self::TxSetComponentTxsMaybeDiscountedFee(_) => "TxSetComponentTxsMaybeDiscountedFee",
             Self::TransactionPhase(_) => "TransactionPhase",
@@ -55699,15 +61162,37 @@ impl Type {
             Self::DontHave(_) => "DontHave",
             Self::SurveyMessageCommandType(_) => "SurveyMessageCommandType",
             Self::SurveyMessageResponseType(_) => "SurveyMessageResponseType",
+            Self::TimeSlicedSurveyStartCollectingMessage(_) => {
+                "TimeSlicedSurveyStartCollectingMessage"
+            }
+            Self::SignedTimeSlicedSurveyStartCollectingMessage(_) => {
+                "SignedTimeSlicedSurveyStartCollectingMessage"
+            }
+            Self::TimeSlicedSurveyStopCollectingMessage(_) => {
+                "TimeSlicedSurveyStopCollectingMessage"
+            }
+            Self::SignedTimeSlicedSurveyStopCollectingMessage(_) => {
+                "SignedTimeSlicedSurveyStopCollectingMessage"
+            }
             Self::SurveyRequestMessage(_) => "SurveyRequestMessage",
+            Self::TimeSlicedSurveyRequestMessage(_) => "TimeSlicedSurveyRequestMessage",
             Self::SignedSurveyRequestMessage(_) => "SignedSurveyRequestMessage",
+            Self::SignedTimeSlicedSurveyRequestMessage(_) => "SignedTimeSlicedSurveyRequestMessage",
             Self::EncryptedBody(_) => "EncryptedBody",
             Self::SurveyResponseMessage(_) => "SurveyResponseMessage",
+            Self::TimeSlicedSurveyResponseMessage(_) => "TimeSlicedSurveyResponseMessage",
             Self::SignedSurveyResponseMessage(_) => "SignedSurveyResponseMessage",
+            Self::SignedTimeSlicedSurveyResponseMessage(_) => {
+                "SignedTimeSlicedSurveyResponseMessage"
+            }
             Self::PeerStats(_) => "PeerStats",
             Self::PeerStatList(_) => "PeerStatList",
+            Self::TimeSlicedNodeData(_) => "TimeSlicedNodeData",
+            Self::TimeSlicedPeerData(_) => "TimeSlicedPeerData",
+            Self::TimeSlicedPeerDataList(_) => "TimeSlicedPeerDataList",
             Self::TopologyResponseBodyV0(_) => "TopologyResponseBodyV0",
             Self::TopologyResponseBodyV1(_) => "TopologyResponseBodyV1",
+            Self::TopologyResponseBodyV2(_) => "TopologyResponseBodyV2",
             Self::SurveyResponseBody(_) => "SurveyResponseBody",
             Self::TxAdvertVector(_) => "TxAdvertVector",
             Self::FloodAdvert(_) => "FloodAdvert",
@@ -55750,6 +61235,7 @@ impl Type {
             Self::ContractIdPreimage(_) => "ContractIdPreimage",
             Self::ContractIdPreimageFromAddress(_) => "ContractIdPreimageFromAddress",
             Self::CreateContractArgs(_) => "CreateContractArgs",
+            Self::CreateContractArgsV2(_) => "CreateContractArgsV2",
             Self::InvokeContractArgs(_) => "InvokeContractArgs",
             Self::HostFunction(_) => "HostFunction",
             Self::SorobanAuthorizedFunctionType(_) => "SorobanAuthorizedFunctionType",
@@ -55777,8 +61263,16 @@ impl Type {
             Self::PreconditionType(_) => "PreconditionType",
             Self::Preconditions(_) => "Preconditions",
             Self::LedgerFootprint(_) => "LedgerFootprint",
+            Self::ArchivalProofType(_) => "ArchivalProofType",
+            Self::ArchivalProofNode(_) => "ArchivalProofNode",
+            Self::ProofLevel(_) => "ProofLevel",
+            Self::NonexistenceProofBody(_) => "NonexistenceProofBody",
+            Self::ExistenceProofBody(_) => "ExistenceProofBody",
+            Self::ArchivalProof(_) => "ArchivalProof",
+            Self::ArchivalProofBody(_) => "ArchivalProofBody",
             Self::SorobanResources(_) => "SorobanResources",
             Self::SorobanTransactionData(_) => "SorobanTransactionData",
+            Self::SorobanTransactionDataExt(_) => "SorobanTransactionDataExt",
             Self::TransactionV0(_) => "TransactionV0",
             Self::TransactionV0Ext(_) => "TransactionV0Ext",
             Self::TransactionV0Envelope(_) => "TransactionV0Envelope",
@@ -55898,12 +61392,15 @@ impl Type {
             Self::Curve25519Public(_) => "Curve25519Public",
             Self::HmacSha256Key(_) => "HmacSha256Key",
             Self::HmacSha256Mac(_) => "HmacSha256Mac",
+            Self::ShortHashSeed(_) => "ShortHashSeed",
+            Self::BinaryFuseFilterType(_) => "BinaryFuseFilterType",
+            Self::SerializedBinaryFuseFilter(_) => "SerializedBinaryFuseFilter",
         }
     }
 
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub const fn variants() -> [TypeVariant; 425] {
+    pub const fn variants() -> [TypeVariant; 462] {
         Self::VARIANTS
     }
 
@@ -55926,6 +61423,9 @@ impl Type {
                 TypeVariant::ConfigSettingContractExecutionLanesV0
             }
             Self::ConfigSettingContractComputeV0(_) => TypeVariant::ConfigSettingContractComputeV0,
+            Self::ConfigSettingContractParallelComputeV0(_) => {
+                TypeVariant::ConfigSettingContractParallelComputeV0
+            }
             Self::ConfigSettingContractLedgerCostV0(_) => {
                 TypeVariant::ConfigSettingContractLedgerCostV0
             }
@@ -56087,6 +61587,19 @@ impl Type {
             Self::LedgerKeyConfigSetting(_) => TypeVariant::LedgerKeyConfigSetting,
             Self::LedgerKeyTtl(_) => TypeVariant::LedgerKeyTtl,
             Self::EnvelopeType(_) => TypeVariant::EnvelopeType,
+            Self::BucketListType(_) => TypeVariant::BucketListType,
+            Self::BucketEntryType(_) => TypeVariant::BucketEntryType,
+            Self::HotArchiveBucketEntryType(_) => TypeVariant::HotArchiveBucketEntryType,
+            Self::ColdArchiveBucketEntryType(_) => TypeVariant::ColdArchiveBucketEntryType,
+            Self::BucketMetadata(_) => TypeVariant::BucketMetadata,
+            Self::BucketMetadataExt(_) => TypeVariant::BucketMetadataExt,
+            Self::BucketEntry(_) => TypeVariant::BucketEntry,
+            Self::HotArchiveBucketEntry(_) => TypeVariant::HotArchiveBucketEntry,
+            Self::ColdArchiveArchivedLeaf(_) => TypeVariant::ColdArchiveArchivedLeaf,
+            Self::ColdArchiveDeletedLeaf(_) => TypeVariant::ColdArchiveDeletedLeaf,
+            Self::ColdArchiveBoundaryLeaf(_) => TypeVariant::ColdArchiveBoundaryLeaf,
+            Self::ColdArchiveHashEntry(_) => TypeVariant::ColdArchiveHashEntry,
+            Self::ColdArchiveBucketEntry(_) => TypeVariant::ColdArchiveBucketEntry,
             Self::UpgradeType(_) => TypeVariant::UpgradeType,
             Self::StellarValueType(_) => TypeVariant::StellarValueType,
             Self::LedgerCloseValueSignature(_) => TypeVariant::LedgerCloseValueSignature,
@@ -56101,11 +61614,10 @@ impl Type {
             Self::ConfigUpgradeSetKey(_) => TypeVariant::ConfigUpgradeSetKey,
             Self::LedgerUpgrade(_) => TypeVariant::LedgerUpgrade,
             Self::ConfigUpgradeSet(_) => TypeVariant::ConfigUpgradeSet,
-            Self::BucketEntryType(_) => TypeVariant::BucketEntryType,
-            Self::BucketMetadata(_) => TypeVariant::BucketMetadata,
-            Self::BucketMetadataExt(_) => TypeVariant::BucketMetadataExt,
-            Self::BucketEntry(_) => TypeVariant::BucketEntry,
             Self::TxSetComponentType(_) => TypeVariant::TxSetComponentType,
+            Self::TxExecutionThread(_) => TypeVariant::TxExecutionThread,
+            Self::ParallelTxExecutionStage(_) => TypeVariant::ParallelTxExecutionStage,
+            Self::ParallelTxsComponent(_) => TypeVariant::ParallelTxsComponent,
             Self::TxSetComponent(_) => TypeVariant::TxSetComponent,
             Self::TxSetComponentTxsMaybeDiscountedFee(_) => {
                 TypeVariant::TxSetComponentTxsMaybeDiscountedFee
@@ -56167,15 +61679,41 @@ impl Type {
             Self::DontHave(_) => TypeVariant::DontHave,
             Self::SurveyMessageCommandType(_) => TypeVariant::SurveyMessageCommandType,
             Self::SurveyMessageResponseType(_) => TypeVariant::SurveyMessageResponseType,
+            Self::TimeSlicedSurveyStartCollectingMessage(_) => {
+                TypeVariant::TimeSlicedSurveyStartCollectingMessage
+            }
+            Self::SignedTimeSlicedSurveyStartCollectingMessage(_) => {
+                TypeVariant::SignedTimeSlicedSurveyStartCollectingMessage
+            }
+            Self::TimeSlicedSurveyStopCollectingMessage(_) => {
+                TypeVariant::TimeSlicedSurveyStopCollectingMessage
+            }
+            Self::SignedTimeSlicedSurveyStopCollectingMessage(_) => {
+                TypeVariant::SignedTimeSlicedSurveyStopCollectingMessage
+            }
             Self::SurveyRequestMessage(_) => TypeVariant::SurveyRequestMessage,
+            Self::TimeSlicedSurveyRequestMessage(_) => TypeVariant::TimeSlicedSurveyRequestMessage,
             Self::SignedSurveyRequestMessage(_) => TypeVariant::SignedSurveyRequestMessage,
+            Self::SignedTimeSlicedSurveyRequestMessage(_) => {
+                TypeVariant::SignedTimeSlicedSurveyRequestMessage
+            }
             Self::EncryptedBody(_) => TypeVariant::EncryptedBody,
             Self::SurveyResponseMessage(_) => TypeVariant::SurveyResponseMessage,
+            Self::TimeSlicedSurveyResponseMessage(_) => {
+                TypeVariant::TimeSlicedSurveyResponseMessage
+            }
             Self::SignedSurveyResponseMessage(_) => TypeVariant::SignedSurveyResponseMessage,
+            Self::SignedTimeSlicedSurveyResponseMessage(_) => {
+                TypeVariant::SignedTimeSlicedSurveyResponseMessage
+            }
             Self::PeerStats(_) => TypeVariant::PeerStats,
             Self::PeerStatList(_) => TypeVariant::PeerStatList,
+            Self::TimeSlicedNodeData(_) => TypeVariant::TimeSlicedNodeData,
+            Self::TimeSlicedPeerData(_) => TypeVariant::TimeSlicedPeerData,
+            Self::TimeSlicedPeerDataList(_) => TypeVariant::TimeSlicedPeerDataList,
             Self::TopologyResponseBodyV0(_) => TypeVariant::TopologyResponseBodyV0,
             Self::TopologyResponseBodyV1(_) => TypeVariant::TopologyResponseBodyV1,
+            Self::TopologyResponseBodyV2(_) => TypeVariant::TopologyResponseBodyV2,
             Self::SurveyResponseBody(_) => TypeVariant::SurveyResponseBody,
             Self::TxAdvertVector(_) => TypeVariant::TxAdvertVector,
             Self::FloodAdvert(_) => TypeVariant::FloodAdvert,
@@ -56220,6 +61758,7 @@ impl Type {
             Self::ContractIdPreimage(_) => TypeVariant::ContractIdPreimage,
             Self::ContractIdPreimageFromAddress(_) => TypeVariant::ContractIdPreimageFromAddress,
             Self::CreateContractArgs(_) => TypeVariant::CreateContractArgs,
+            Self::CreateContractArgsV2(_) => TypeVariant::CreateContractArgsV2,
             Self::InvokeContractArgs(_) => TypeVariant::InvokeContractArgs,
             Self::HostFunction(_) => TypeVariant::HostFunction,
             Self::SorobanAuthorizedFunctionType(_) => TypeVariant::SorobanAuthorizedFunctionType,
@@ -56249,8 +61788,16 @@ impl Type {
             Self::PreconditionType(_) => TypeVariant::PreconditionType,
             Self::Preconditions(_) => TypeVariant::Preconditions,
             Self::LedgerFootprint(_) => TypeVariant::LedgerFootprint,
+            Self::ArchivalProofType(_) => TypeVariant::ArchivalProofType,
+            Self::ArchivalProofNode(_) => TypeVariant::ArchivalProofNode,
+            Self::ProofLevel(_) => TypeVariant::ProofLevel,
+            Self::NonexistenceProofBody(_) => TypeVariant::NonexistenceProofBody,
+            Self::ExistenceProofBody(_) => TypeVariant::ExistenceProofBody,
+            Self::ArchivalProof(_) => TypeVariant::ArchivalProof,
+            Self::ArchivalProofBody(_) => TypeVariant::ArchivalProofBody,
             Self::SorobanResources(_) => TypeVariant::SorobanResources,
             Self::SorobanTransactionData(_) => TypeVariant::SorobanTransactionData,
+            Self::SorobanTransactionDataExt(_) => TypeVariant::SorobanTransactionDataExt,
             Self::TransactionV0(_) => TypeVariant::TransactionV0,
             Self::TransactionV0Ext(_) => TypeVariant::TransactionV0Ext,
             Self::TransactionV0Envelope(_) => TypeVariant::TransactionV0Envelope,
@@ -56388,6 +61935,9 @@ impl Type {
             Self::Curve25519Public(_) => TypeVariant::Curve25519Public,
             Self::HmacSha256Key(_) => TypeVariant::HmacSha256Key,
             Self::HmacSha256Mac(_) => TypeVariant::HmacSha256Mac,
+            Self::ShortHashSeed(_) => TypeVariant::ShortHashSeed,
+            Self::BinaryFuseFilterType(_) => TypeVariant::BinaryFuseFilterType,
+            Self::SerializedBinaryFuseFilter(_) => TypeVariant::SerializedBinaryFuseFilter,
         }
     }
 }
@@ -56423,6 +61973,7 @@ impl WriteXdr for Type {
             Self::ScpQuorumSet(v) => v.write_xdr(w),
             Self::ConfigSettingContractExecutionLanesV0(v) => v.write_xdr(w),
             Self::ConfigSettingContractComputeV0(v) => v.write_xdr(w),
+            Self::ConfigSettingContractParallelComputeV0(v) => v.write_xdr(w),
             Self::ConfigSettingContractLedgerCostV0(v) => v.write_xdr(w),
             Self::ConfigSettingContractHistoricalDataV0(v) => v.write_xdr(w),
             Self::ConfigSettingContractEventsV0(v) => v.write_xdr(w),
@@ -56570,6 +62121,19 @@ impl WriteXdr for Type {
             Self::LedgerKeyConfigSetting(v) => v.write_xdr(w),
             Self::LedgerKeyTtl(v) => v.write_xdr(w),
             Self::EnvelopeType(v) => v.write_xdr(w),
+            Self::BucketListType(v) => v.write_xdr(w),
+            Self::BucketEntryType(v) => v.write_xdr(w),
+            Self::HotArchiveBucketEntryType(v) => v.write_xdr(w),
+            Self::ColdArchiveBucketEntryType(v) => v.write_xdr(w),
+            Self::BucketMetadata(v) => v.write_xdr(w),
+            Self::BucketMetadataExt(v) => v.write_xdr(w),
+            Self::BucketEntry(v) => v.write_xdr(w),
+            Self::HotArchiveBucketEntry(v) => v.write_xdr(w),
+            Self::ColdArchiveArchivedLeaf(v) => v.write_xdr(w),
+            Self::ColdArchiveDeletedLeaf(v) => v.write_xdr(w),
+            Self::ColdArchiveBoundaryLeaf(v) => v.write_xdr(w),
+            Self::ColdArchiveHashEntry(v) => v.write_xdr(w),
+            Self::ColdArchiveBucketEntry(v) => v.write_xdr(w),
             Self::UpgradeType(v) => v.write_xdr(w),
             Self::StellarValueType(v) => v.write_xdr(w),
             Self::LedgerCloseValueSignature(v) => v.write_xdr(w),
@@ -56584,11 +62148,10 @@ impl WriteXdr for Type {
             Self::ConfigUpgradeSetKey(v) => v.write_xdr(w),
             Self::LedgerUpgrade(v) => v.write_xdr(w),
             Self::ConfigUpgradeSet(v) => v.write_xdr(w),
-            Self::BucketEntryType(v) => v.write_xdr(w),
-            Self::BucketMetadata(v) => v.write_xdr(w),
-            Self::BucketMetadataExt(v) => v.write_xdr(w),
-            Self::BucketEntry(v) => v.write_xdr(w),
             Self::TxSetComponentType(v) => v.write_xdr(w),
+            Self::TxExecutionThread(v) => v.write_xdr(w),
+            Self::ParallelTxExecutionStage(v) => v.write_xdr(w),
+            Self::ParallelTxsComponent(v) => v.write_xdr(w),
             Self::TxSetComponent(v) => v.write_xdr(w),
             Self::TxSetComponentTxsMaybeDiscountedFee(v) => v.write_xdr(w),
             Self::TransactionPhase(v) => v.write_xdr(w),
@@ -56644,15 +62207,27 @@ impl WriteXdr for Type {
             Self::DontHave(v) => v.write_xdr(w),
             Self::SurveyMessageCommandType(v) => v.write_xdr(w),
             Self::SurveyMessageResponseType(v) => v.write_xdr(w),
+            Self::TimeSlicedSurveyStartCollectingMessage(v) => v.write_xdr(w),
+            Self::SignedTimeSlicedSurveyStartCollectingMessage(v) => v.write_xdr(w),
+            Self::TimeSlicedSurveyStopCollectingMessage(v) => v.write_xdr(w),
+            Self::SignedTimeSlicedSurveyStopCollectingMessage(v) => v.write_xdr(w),
             Self::SurveyRequestMessage(v) => v.write_xdr(w),
+            Self::TimeSlicedSurveyRequestMessage(v) => v.write_xdr(w),
             Self::SignedSurveyRequestMessage(v) => v.write_xdr(w),
+            Self::SignedTimeSlicedSurveyRequestMessage(v) => v.write_xdr(w),
             Self::EncryptedBody(v) => v.write_xdr(w),
             Self::SurveyResponseMessage(v) => v.write_xdr(w),
+            Self::TimeSlicedSurveyResponseMessage(v) => v.write_xdr(w),
             Self::SignedSurveyResponseMessage(v) => v.write_xdr(w),
+            Self::SignedTimeSlicedSurveyResponseMessage(v) => v.write_xdr(w),
             Self::PeerStats(v) => v.write_xdr(w),
             Self::PeerStatList(v) => v.write_xdr(w),
+            Self::TimeSlicedNodeData(v) => v.write_xdr(w),
+            Self::TimeSlicedPeerData(v) => v.write_xdr(w),
+            Self::TimeSlicedPeerDataList(v) => v.write_xdr(w),
             Self::TopologyResponseBodyV0(v) => v.write_xdr(w),
             Self::TopologyResponseBodyV1(v) => v.write_xdr(w),
+            Self::TopologyResponseBodyV2(v) => v.write_xdr(w),
             Self::SurveyResponseBody(v) => v.write_xdr(w),
             Self::TxAdvertVector(v) => v.write_xdr(w),
             Self::FloodAdvert(v) => v.write_xdr(w),
@@ -56695,6 +62270,7 @@ impl WriteXdr for Type {
             Self::ContractIdPreimage(v) => v.write_xdr(w),
             Self::ContractIdPreimageFromAddress(v) => v.write_xdr(w),
             Self::CreateContractArgs(v) => v.write_xdr(w),
+            Self::CreateContractArgsV2(v) => v.write_xdr(w),
             Self::InvokeContractArgs(v) => v.write_xdr(w),
             Self::HostFunction(v) => v.write_xdr(w),
             Self::SorobanAuthorizedFunctionType(v) => v.write_xdr(w),
@@ -56722,8 +62298,16 @@ impl WriteXdr for Type {
             Self::PreconditionType(v) => v.write_xdr(w),
             Self::Preconditions(v) => v.write_xdr(w),
             Self::LedgerFootprint(v) => v.write_xdr(w),
+            Self::ArchivalProofType(v) => v.write_xdr(w),
+            Self::ArchivalProofNode(v) => v.write_xdr(w),
+            Self::ProofLevel(v) => v.write_xdr(w),
+            Self::NonexistenceProofBody(v) => v.write_xdr(w),
+            Self::ExistenceProofBody(v) => v.write_xdr(w),
+            Self::ArchivalProof(v) => v.write_xdr(w),
+            Self::ArchivalProofBody(v) => v.write_xdr(w),
             Self::SorobanResources(v) => v.write_xdr(w),
             Self::SorobanTransactionData(v) => v.write_xdr(w),
+            Self::SorobanTransactionDataExt(v) => v.write_xdr(w),
             Self::TransactionV0(v) => v.write_xdr(w),
             Self::TransactionV0Ext(v) => v.write_xdr(w),
             Self::TransactionV0Envelope(v) => v.write_xdr(w),
@@ -56835,6 +62419,9 @@ impl WriteXdr for Type {
             Self::Curve25519Public(v) => v.write_xdr(w),
             Self::HmacSha256Key(v) => v.write_xdr(w),
             Self::HmacSha256Mac(v) => v.write_xdr(w),
+            Self::ShortHashSeed(v) => v.write_xdr(w),
+            Self::BinaryFuseFilterType(v) => v.write_xdr(w),
+            Self::SerializedBinaryFuseFilter(v) => v.write_xdr(w),
         }
     }
 }
