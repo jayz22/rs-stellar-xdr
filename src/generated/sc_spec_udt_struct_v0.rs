@@ -8,7 +8,7 @@ use super::*;
 /// {
 ///     string doc<SC_SPEC_DOC_LIMIT>;
 ///     string lib<80>;
-///     string name<60>;
+///     string name<SC_SPEC_TYPE_NAME_LIMIT>;
 ///     SCSpecUDTStructFieldV0 fields<>;
 /// };
 /// ```
@@ -27,7 +27,7 @@ use super::*;
 pub struct ScSpecUdtStructV0 {
     pub doc: StringM<1024>,
     pub lib: StringM<80>,
-    pub name: StringM<60>,
+    pub name: StringM<1024>,
     pub fields: VecM<ScSpecUdtStructFieldV0>,
 }
 
@@ -38,7 +38,7 @@ impl ReadXdr for ScSpecUdtStructV0 {
             Ok(Self {
                 doc: StringM::<1024>::read_xdr(r)?,
                 lib: StringM::<80>::read_xdr(r)?,
-                name: StringM::<60>::read_xdr(r)?,
+                name: StringM::<1024>::read_xdr(r)?,
                 fields: VecM::<ScSpecUdtStructFieldV0>::read_xdr(r)?,
             })
         })

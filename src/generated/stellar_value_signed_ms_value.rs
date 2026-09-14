@@ -1,15 +1,17 @@
 #[allow(unused_imports, clippy::wildcard_imports)]
 use super::*;
 
-/// ScSpecTypeUdt is an XDR Struct defined as:
+/// StellarValueSignedMsValue is an XDR NestedStruct defined as:
 ///
 /// ```text
-/// struct SCSpecTypeUDT
-/// {
-///     string name<SC_SPEC_TYPE_NAME_LIMIT>;
-/// };
+/// struct
+///         {
+///             TimePointMilliseconds closeTimeMs; // closeTime == closeTimeMs / 1000
+///             LedgerCloseValueSignature lcValueSignature;
+///         }
 /// ```
 ///
+#[cfg(feature = "ms_close_time")]
 #[cfg_attr(feature = "alloc", derive(Default))]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", cfg_eval::cfg_eval)]
@@ -21,26 +23,31 @@ use super::*;
     serde(rename_all = "snake_case")
 )]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct ScSpecTypeUdt {
-    pub name: StringM<1024>,
+pub struct StellarValueSignedMsValue {
+    pub close_time_ms: TimePointMilliseconds,
+    pub lc_value_signature: LedgerCloseValueSignature,
 }
 
-impl ReadXdr for ScSpecTypeUdt {
+#[cfg(feature = "ms_close_time")]
+impl ReadXdr for StellarValueSignedMsValue {
     #[cfg(feature = "std")]
     fn read_xdr<R: Read>(r: &mut Limited<R>) -> Result<Self, Error> {
         r.with_limited_depth(|r| {
             Ok(Self {
-                name: StringM::<1024>::read_xdr(r)?,
+                close_time_ms: TimePointMilliseconds::read_xdr(r)?,
+                lc_value_signature: LedgerCloseValueSignature::read_xdr(r)?,
             })
         })
     }
 }
 
-impl WriteXdr for ScSpecTypeUdt {
+#[cfg(feature = "ms_close_time")]
+impl WriteXdr for StellarValueSignedMsValue {
     #[cfg(feature = "std")]
     fn write_xdr<W: Write>(&self, w: &mut Limited<W>) -> Result<(), Error> {
         w.with_limited_depth(|w| {
-            self.name.write_xdr(w)?;
+            self.close_time_ms.write_xdr(w)?;
+            self.lc_value_signature.write_xdr(w)?;
             Ok(())
         })
     }
